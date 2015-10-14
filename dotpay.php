@@ -7,41 +7,27 @@
  * @license GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
 **/
 
-
-
-
 defined('_JEXEC') or die('Restricted access');
 
-/**
- *
- * http://virtuemart.org
- * 
- */
+
 if (!class_exists('vmPSPlugin'))
     require(JPATH_VM_PLUGINS . DS . 'vmpsplugin.php');
 
 class plgVmPaymentDotpay extends vmPSPlugin {
 
-    // instance of class
     public static $_this = false;
 
-    function __construct(&$subject, $config) 
+    public function __construct(&$subject, $config)
 	{
-		
 		parent::__construct($subject, $config);
-		
 		$this->_loggable = true;
-                $this->tableFields = array_keys($this->getTableSQLFields());
-                $this->_tablepkey = 'id'; //VM3_dotpay_id';
-                $this->_tableId = 'id';   //VM3_dotpay_id';
-                
+        $this->tableFields = array_keys($this->getTableSQLFields());
+        $this->_tablepkey = 'id'; //VM3_dotpay_id';
+        $this->_tableId = 'id';   //VM3_dotpay_id';
 		$varsToPush = $this->getVarsToPush();
-                
-                $dotpay_element_vars = array("", "char");
-                $varsToPush["payment_logos"] = $dotpay_element_vars;
-                                
-                $this->setConfigParameterable($this->_configTableFieldName, $varsToPush);
-                
+        $dotpay_element_vars = array("", "char");
+        $varsToPush["payment_logos"] = $dotpay_element_vars;
+        $this->setConfigParameterable($this->_configTableFieldName, $varsToPush);
 	}
 
     protected function getVmPluginCreateTableSQL() {
@@ -49,9 +35,9 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     }
     
     
-    function getTableSQLFields() 
+    public function getTableSQLFields()
 	{
-		$SQLfields = array(
+		return array(
 			'id' => ' int(11) UNSIGNED NOT NULL AUTO_INCREMENT ',
 			'virtuemart_order_id' => ' int(11) UNSIGNED DEFAULT NULL',
 			'order_number' => ' char(32) DEFAULT NULL',
@@ -59,18 +45,17 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 			'payment_name' => 'char(255) NOT NULL DEFAULT \'\' ',
 			'tax_id' => 'int(11) DEFAULT NULL',
 			'dotpay_control' => 'varchar(32) ',
-                        'kwota_zamowienia' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
-                        'waluta_zamowienia' => 'varchar(32) ',
-                        'kwota_platnosci' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
-                        'waluta_platnosci' => 'varchar(32) '
-			
+            'kwota_zamowienia' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
+            'waluta_zamowienia' => 'varchar(32) ',
+            'kwota_platnosci' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
+            'waluta_platnosci' => 'varchar(32) '
 		);
-		return $SQLfields;
+
     }
     
         // order confirm
 	
-	function plgVmConfirmDotpay($cart, $order, $auto_redirect = false, $form_method = "GET")
+	public function plgVmConfirmDotpay($cart, $order, $auto_redirect = false, $form_method = "GET")
 	{
 		if (!($method = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id))) {
 			return null; // Inna metoda została wybrana, nie rób nic.
@@ -86,9 +71,8 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
 		// konwersja z waluty zamówienia, do waluty płatności
 
-                $this->getPaymentCurrency($method);
-                // $kwota_zamowienia = $order['details']['BT']->order_total;
-                $kwota_zamowienia = number_format($order['details']['BT']->order_total,2,".","");
+        $this->getPaymentCurrency($method);
+        $kwota_zamowienia = number_format($order['details']['BT']->order_total,2,".","");
 
 //                // pobranie 3 znakowego kodu waluty
 
