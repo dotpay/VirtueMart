@@ -21,10 +21,10 @@ class JFormFieldDotpayLogo extends JFormField {
 	var $type = 'DotpayLogo';
 
 	function getInput() {
-		
-                $logo = '<style> .control-group:has(> label.params_dotpay_urlc_info-lbl) { width: auto} .ui-tooltip {width:60%} .ui-tooltip-content {background-color: #ffffca} .ui-widget-content {background: #ffffca} .control-field{ padding: 10px;} </style><a href="http://www.dotpay.pl" target="_blank"><img src="/media/images/stories/virtuemart/payment/dp_logo_alpha_175_50.png" /></a>  
+
+                    return'<style> .control-group:has(> label.params_dotpay_urlc_info-lbl) { width: auto} .ui-tooltip {width:60%} .ui-tooltip-content {background-color: #ffffca} .ui-widget-content {background: #ffffca} .control-field{ padding: 10px;} </style><a href="http://www.dotpay.pl" target="_blank"><img src="/media/images/stories/virtuemart/payment/dp_logo_alpha_175_50.png" /></a>
                          <script type="text/javascript">jQuery(document).ready(function() {jQuery("#params_dotpay_urlc_info-lbl").parents().css("width", "auto")});</script>';
-		return $logo;
+
 
 
 	}
