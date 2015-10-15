@@ -184,8 +184,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $html;
     }
 
-
-
     private function getDotpayUrl($paymentMethod)
     {
         if ($paymentMethod->fake_real === '1') {
@@ -292,95 +290,77 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
         }
         
-    function plgVmOnPaymentNotification() {
-        
-        
-        
-        $virtuemart_paymentmethod_id = JRequest::getInt('pm', 0);
+    public function plgVmOnPaymentNotification() {
 
-	if (!($method = $this->getVmPluginMethod($virtuemart_paymentmethod_id))) {
+    $virtuemart_paymentmethod_id = JRequest::getInt('pm', 0);
+
+	if(!($method = $this->getVmPluginMethod($virtuemart_paymentmethod_id))){
 			return null;
-        }
+     }
 
-	if (!$this->selectedThisElement($method->payment_element)) {
+	if(!$this->selectedThisElement($method->payment_element)) {
 			return false;
 	}
         
-        if(isset($_POST['signature']) && $_SERVER['REMOTE_ADDR']=="195.150.9.37"){
-         
+    if(isset($_POST['signature']) && $_SERVER['REMOTE_ADDR']=="195.150.9.37"){
         $method = $this->getVmPluginMethod($virtuemart_paymentmethod_id);
-        
         $pin = $method-> dotpay_pin;
-        
         $sig = $pin;
-        
         $check_keys = array(
-            'id',
-            'operation_number',
-            'operation_type',
-            'operation_status',
-            'operation_amount',
-            'operation_currency',
-            'operation_withdrawal_amount',
-            'operation_commission_amount',
-            'operation_original_amount',
-            'operation_original_currency',
-            'operation_datetime',
-            'operation_related_number',
-            'control',
-            'description',
-            'email',
-            'p_info',
-            'p_email',
-            'channel',
-            'channel_country',
-            'geoip_country'
-        );
-        
+                'id',
+                'operation_number',
+                'operation_type',
+                'operation_status',
+                'operation_amount',
+                'operation_currency',
+                'operation_withdrawal_amount',
+                'operation_commission_amount',
+                'operation_original_amount',
+                'operation_original_currency',
+                'operation_datetime',
+                'operation_related_number',
+                'control',
+                'description',
+                'email',
+                'p_info',
+                'p_email',
+                'channel',
+                'channel_country',
+                'geoip_country'
+            );
+
         foreach ($check_keys as $value) {
-            
              if(array_key_exists($value, $_POST) === true) {
                  $sig .= $_POST[$value];
              }
-            
         }
         
         if($_POST['signature'] == hash('sha256',$sig)) {
-         
-         
-          $db = JFactory::getDBO();
-          $q = 'SELECT dotpay.*, ord.order_status, usr.email  FROM '.$this->_tablename.' as dotpay JOIN `#__virtuemart_orders` as ord using(virtuemart_order_id) JOIN #__virtuemart_order_userinfos  as usr using(virtuemart_order_id)  WHERE dotpay.dotpay_control="' .$_POST['control']. '" ';
-          $db->setQuery($q);
-          $payment_db = $db->loadObject();
+            $db = JFactory::getDBO();
+            $q = 'SELECT dotpay.*, ord.order_status, usr.email  FROM '.$this->_tablename.' as dotpay JOIN `#__virtuemart_orders` as ord using(virtuemart_order_id) JOIN #__virtuemart_order_userinfos  as usr using(virtuemart_order_id)  WHERE dotpay.dotpay_control="' .$_POST['control']. '" ';
+            $db->setQuery($q);
+            $payment_db = $db->loadObject();
 
-          
-          
-          switch($_POST['operation_status'])
-                    {
-                        
-                        case 'completed':
-//                            // status completed
-                            if($payment_db->order_status!="C" && $payment_db->order_status!='X')
-                            {
-                              $virtuemart_order_id = $payment_db->virtuemart_order_id;
-                                $message = 'PLG_DOTPAY_STATUS_OK';
-                                 $this->NewStatus($virtuemart_order_id,$method->status_success, $message, $method->feedback);
-                            }
-                            break;
-                        case 'rejected':
-                            // status canceled
-                            if($payment_db->order_status!="C" && $payment_db->order_status!='X')
-                            {
-                             $virtuemart_order_id = $payment_db->virtuemart_order_id;
-                               $message = 'PLG_DOTPAY_STATUS_FAIL';
-                                $status = $this->NewStatus($virtuemart_order_id,$method->status_canceled, $message, $method->feedback);
-                                
-                            }
-                            break;
+            switch($_POST['operation_status']){
+                case 'completed':
+                    if($payment_db->order_status!="C" && $payment_db->order_status!='X'){
+                        $virtuemart_order_id = $payment_db->virtuemart_order_id;
+                        $message = 'PLG_DOTPAY_STATUS_OK';
+                        $this->NewStatus($virtuemart_order_id,$method->status_success, $message, $method->feedback);
                     }
+                    break;
+                case 'rejected':
+
+                    if($payment_db->order_status!="C" && $payment_db->order_status!='X'){
+                        $virtuemart_order_id = $payment_db->virtuemart_order_id;
+                        $message = 'PLG_DOTPAY_STATUS_FAIL';
+                        $status = $this->NewStatus($virtuemart_order_id,$method->status_canceled, $message, $method->feedback);
+                    }
+                    break;
+            }
           
-         echo "OK";
-         exit();
+             echo "OK";
+             exit();
         }
         else {
             error_log('BAD SIGNATURE');
