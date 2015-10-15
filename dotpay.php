@@ -50,173 +50,186 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             'kwota_platnosci' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
             'waluta_platnosci' => 'varchar(32) '
 		);
-
     }
-    
-        // order confirm
-	
+
 	public function plgVmConfirmDotpay($cart, $order, $auto_redirect = false, $form_method = "GET")
 	{
-		if (!($method = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id))) {
-			return null; // Inna metoda została wybrana, nie rób nic.
-		}
-		if (!$this->selectedThisElement($method->payment_element)) {
-			return false;
-		}
+        $orderDetails = $order['details']['BT'];
+        $paymentMethod = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id);
+        $currency = $this->getCurrency($paymentMethod);
 
-		if (!class_exists('VirtueMartModelOrders'))
-		{
+        if(!$this->isPluginValidated($paymentMethod)){
+            return false;
+        }
+
+		if (!class_exists('VirtueMartModelOrders')){
 			require( JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php' );
 		}
 
-		// konwersja z waluty zamówienia, do waluty płatności
-
-        $this->getPaymentCurrency($method);
-        $kwota_zamowienia = number_format($order['details']['BT']->order_total,2,".","");
-
-//                // pobranie 3 znakowego kodu waluty
-
-                $q = 'SELECT currency_code_3 FROM #__virtuemart_currencies WHERE virtuemart_currency_id="' .$method->payment_currency. '" ';
-                $db = JFactory::getDBO();
-                $db->setQuery($q);
-                $waluta_zamowienia = $db->loadResult(); //$waluta_zamowienia = $method->payment_currency;  tutaj wywala z id z bazy
-
-                $CurrencyObj = CurrencyDisplay::getInstance($method->payment_currency);
-
-        if((is_array($method->dotpay_waluty) && count($method->dotpay_waluty)>0) )
-        {
-            if(in_array($waluta_zamowienia, $method->dotpay_waluty))
-            {
-                 $kwota_platnosci = $kwota_zamowienia;
-                 $waluta_platnosci =  $waluta_zamowienia;
-            }
-            else
-            {
-                $q = 'SELECT virtuemart_currency_id FROM #__virtuemart_currencies WHERE currency_code_3="' .$method->dotpay_waluty[0]. '" ';
-                $db = JFactory::getDBO();
-                $db->setQuery($q);
-                $currency_id = $db->loadResult();
-                $kwota_platnosci = number_format($CurrencyObj->convertCurrencyTo($currency_id, $order['details']['BT']->order_total, false),2,".","");
-                $waluta_platnosci = $method->dotpay_waluty[0];
-            }
-        }
-        else if(is_string($method->dotpay_waluty) && !empty($method->dotpay_waluty))
-        {
-
-            if($waluta_zamowienia==$method->dotpay_waluty)
-            {
-                $kwota_platnosci = $kwota_zamowienia;
-                $waluta_platnosci =  $waluta_zamowienia;
-            }
-            else
-            {
-                $q = 'SELECT virtuemart_currency_id FROM #__virtuemart_currencies WHERE currency_code_3="' .$method->dotpay_waluty. '" ';
-                $db = JFactory::getDBO();
-                $db->setQuery($q);
-                $currency_id = $db->loadResult();
-                $kwota_platnosci = number_format($CurrencyObj->convertCurrencyTo($currency_id, $order['details']['BT']->order_total, false),2,".","");
-                $waluta_platnosci = $method->dotpay_waluty[0];
-                
-                
-            }
-        }
-        else
-        {
-            $kwota_platnosci = number_format($CurrencyObj->convertCurrencyTo(114, $order['details']['BT']->order_total, false),2,".",""); // konwertuj do PLN, 114 - id złotówki
-            $waluta_platnosci = "PLN";
+        if(!$this->isCurrencyAvailable($paymentMethod, $currency)){
+            return false;
         }
 
+        $orderData = array(
+            'order_number'                  => $orderDetails->order_number,
+            'payment_name'                  => $this->renderPluginName($paymentMethod, $order),
+            'virtuemart_paymentmethod_id'   => $orderDetails->virtuemart_paymentmethod_id,
+            'tax_id'                        => $paymentMethod->tax_id,
+            'dotpay_control'                => $orderDetails->order_number,
+            'amount'                        => number_format($orderDetails->order_total,2,".",""),
+            'currency'                      => $currency,
+            'url'                           => $this->getUrl($orderDetails),
+            'urlc'                          => $this->getUrlc($orderDetails),
+            'dotpay_id'                     => $paymentMethod->dotpay_id,
+            'description'                   => 'Zamówienie nr '.$orderDetails->order_number,
+            'lang'                          => $this->getLang(),
+            'first_name'                    => $orderDetails->first_name,
+            'last_name'                     => $orderDetails->last_name,
+            'email'                         => $orderDetails->email,
+            'city'                          => $orderDetails->city,
+            'postcode'                      => $orderDetails->zip,
+            'phone'                         => $orderDetails->phone_1,
+            'country'                       => $this->getCountryCode($orderDetails),
+        );
 
-//		// zmienne
-                $zamowienie = $order['details']['BT'];
-                $session_id = md5($zamowienie->order_number.'|'.time());
-                $q = 'SELECT country_3_code FROM #__virtuemart_countries WHERE virtuemart_country_id='.$zamowienie->virtuemart_country_id.' ';        // kraj
-                $db = JFactory::getDBO();
-                $db->setQuery($q);
-                $country = $db->loadResult();
-                $url = JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginresponsereceived&pm='.$order['details']['BT']->virtuemart_paymentmethod_id;
-                $urlc = JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginnotification&tmpl=component&pm='.$order['details']['BT']->virtuemart_paymentmethod_id;
+        $this->saveOrder($orderData);
 
-                $this->_virtuemart_paymentmethod_id = $zamowienie->virtuemart_paymentmethod_id;
-		$dbWartosci['order_number'] = $zamowienie->order_number;
-		$dbWartosci['payment_name'] = $this->renderPluginName($method, $order);
-		$dbWartosci['virtuemart_paymentmethod_id'] = $this->_virtuemart_paymentmethod_id;
-		$dbWartosci['tax_id'] = $method->tax_id;
+		return  $this->prepareHtmlForm( $paymentMethod, $orderData);
+    }
 
-		$dbWartosci['dotpay_control'] = $session_id;
-                $dbWartosci['kwota_zamowienia'] = $kwota_zamowienia ;
-                $dbWartosci['waluta_zamowienia'] = $waluta_zamowienia;
-                $dbWartosci['kwota_platnosci'] = $kwota_platnosci;
-                $dbWartosci['waluta_platnosci'] = $waluta_platnosci;
+    private function saveOrder($orderData){
+        $dataToSave = array(
+            'order_number'                  => $orderData['order_number'],
+            'payment_name'                  => $orderData['payment_name'],
+            'virtuemart_paymentmethod_id'   => $orderData['virtuemart_paymentmethod_id'],
+            'tax_id'                        => $orderData['tax_id'],
+            'dotpay_control'                => $orderData['dotpay_control'],
+            'kwota_zamowienia'              => $orderData['amount'],
+            'waluta_zamowienia'             => $orderData['currency'],
+        );
 
-                $this->storePSPluginInternalData($dbWartosci);
-              
-                $lang = JFactory::getLanguage();
-                
-                if ($method->fake_real === '1') {
-                    $dotpay_address = 'https://ssl.dotpay.pl/test_payment/';
-                }
-                else {
-                        $dotpay_address = 'https://ssl.dotpay.pl/';
-                     }
-                     
-                                                     
-                
-		$html = '
+        $this->storePSPluginInternalData($dataToSave);
+    }
+
+    private function getLang()
+    {
+       $lang = JFactory::getLanguage();
+       return  substr($lang->getTag(),0,2);
+    }
+
+    private function getUrl($orderDetails)
+    {
+        return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginresponsereceived&pm='.$orderDetails->virtuemart_paymentmethod_id;
+    }
+
+    private function getUrlc($orderDetails)
+    {
+        return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginnotification&tmpl=component&pm='.$orderDetails->virtuemart_paymentmethod_id;
+    }
+
+    private function prepareHtmlForm( $paymentMethod, $orderData)
+    {
+        $html = '
 		<div style="text-align: center; width: 100%; ">
-		<form action="'.$dotpay_address .'" method="'.$form_method.'" class="form" name="platnosc_dotpay" id="platnosc_dotpay">
-			<input type="hidden" name="id" value="'.$method->dotpay_id.'" />
-			<input type="hidden" name="amount" value="'.$kwota_platnosci.'" />
-			<input type="hidden" name="currency" value="'.$waluta_platnosci.'" />
-            		<input type="hidden" name="control" value="'.$session_id.'" />
-			<input type="hidden" name="description" value="Zamówienie nr '.$order['details']['BT']->order_number.'" />
-			<input type="hidden" name="lang" value="'.(substr($lang->getTag(),0,2)).'" />
-                        <input type="hidden" name="type" value="0" />
-                        <input type="hidden" name="buttontext" value="" />
-                        <input type="hidden" name="url" value="'.$url.'" />
-                        <input type="hidden" name="urlc" value="'.$urlc.'" />
-                        <input type="hidden" name="firstname" value="'.$zamowienie->first_name.'" />
-                        <input type="hidden" name="lastname" value="'.$zamowienie->last_name.'" />
-                        <input type="hidden" name="email" value="'.$zamowienie->email.'" />
-                        <input type="hidden" name="city" value="'.$zamowienie->city.'" />
-                        <input type="hidden" name="postcode" value="'.$zamowienie->zip.'" />
-                        <input type="hidden" name="phone" value="'.$zamowienie->phone_1.'" />
-                        <input type="hidden" name="country" value="'.$country.'" />
-                        <input type="hidden" name="api_version" value="dev" />';
+		<form action="'. $this->getDotpayUrl($paymentMethod) .'" method="Post" class="form" name="platnosc_dotpay" id="platnosc_dotpay">';
+        $html .= $this->getHtmlInputs($orderData);
 
-		if(file_exists(JPATH_BASE.DS.'media/images'.DS.'stories'.DS.'virtuemart'.DS.'payment'.DS.'dp_logo_alpha_175_50.png'))
-		{
-			$pic = getimagesize(JPATH_BASE.DS.'media/images/stories/virtuemart/payment/'.'dp_logo_alpha_175_50.png');
-			$html .= '
-		  <br /><b>Opłać zamównienie poprzez Dotpay:<b> <br /><input name="submit_send" value="" type="submit" style="border: 0; background: url(\''.JURI::root().'media/images/stories/virtuemart/payment/'.'dp_logo_alpha_175_50.png'.'\'); width: '.$pic[0].'px; height: '.$pic[1].'px; cursor: pointer;" /> <br /><br /><br />';
-		}
-		else
-		{
-			$html .= '<input name="submit_send" value="Zapłać poprzez Dotpay" type="submit"  style="width: 110px; height: 45px;" /> ';
-		}
+        $html .= $this->getHtmlFormEnd();
+        return $html;
+    }
 
-		$html .= '	</form>
-		
-		</div>
-		';
-                
-                // <!--p style="text-align: center; width: 100%; ">'.'NEXT'.'</p-->
+    private function getHtmlInputs($orderData)
+    {
+        $data = array(
+            'id'            => $orderData['dotpay_id'],
+            'amount'        => $orderData['amount'],
+            'currency'      => $orderData['currency'],
+            'control'       => $orderData['dotpay_control'],
+            'description'   => $orderData['description'],
+            'lang'          => $orderData['lang'],
+            'type'          => 0,
+            'url'           => $orderData['url'],
+            'urlc'          => $orderData['urlc'],
+            'firstname'     => $orderData['first_name'],
+            'lastname'      => $orderData['lastname'],
+            'email'         => $orderData['email'],
+            'city'          => $orderData['city'],
+            'postcode'      => $orderData['postcode'],
+            'phone'         => $orderData['phone'],
+            'country'       => $orderData['country'],
+            'api_version'   => 'dev'
+        );
 
-		// automatyczne przerzucenie do płatności
-		if($method->autoredirect && $auto_redirect)
-		{
-			$html .= '
-			<script type="text/javascript">
-                        jQuery.noConflict();
-				jQuery(document).ready(function() {
-                                    jQuery("#platnosc_dotpay").submit();
-                                });
-			</script>';
-		}
+        $html = '';
+        foreach($data as $key => $value){
+            $html .= '<input type="text" name="'.$key.'" value="'.$value.'" />';
+        }
+        return $html;
+    }
 
-		return $html;
-	}
+    private function getHtmlFormEnd()
+    {
+        $src = JURI::root().'media/images/stories/virtuemart/payment/'.'dp_logo_alpha_175_50.png';
 
+		$html = '<br /><b>Opłać zamównienie poprzez Dotpay:<b> <br /><br />';
+		$html .='<input name="submit_send" value="" type="submit" style="border: 0; background: url(\''.$src.'\') no-repeat; width: 200px; height: 100px;padding-top:10px" /> <br /><br /><br />';
+        $html .='</div>';
+
+        $html .= '<script type="text/javascript">';
+        $html .=    'jQuery.noConflict();';
+		$html .=	'jQuery(document).ready(function() {';
+        $html .=           'jQuery("#platnosc_dotpay").submit();';
+        $html .=    '});';
+		$html .= '</script>';
+        return $html;
+    }
+
+
+
+    private function getDotpayUrl($paymentMethod)
+    {
+        if ($paymentMethod->fake_real === '1') {
+            return  'https://ssl.dotpay.pl/test_payment/';
+        }
+        return 'https://ssl.dotpay.pl/';
+    }
+
+    private function getCountryCode($orderDetails){
+        $q = 'SELECT country_3_code FROM #__virtuemart_countries WHERE virtuemart_country_id='. $orderDetails->virtuemart_country_id.' ';
+        $db = JFactory::getDBO();
+        $db->setQuery($q);
+        return $db->loadResult();
+    }
+
+    private function isCurrencyAvailable($paymentMethod, $currency)
+    {
+        return in_array($currency, $paymentMethod->dotpay_waluty);
+    }
+
+    private function isPluginValidated($paymentMethod){
+        if (!$paymentMethod){
+            return false; // Inna metoda została wybrana, nie rób nic.
+        }
+
+        if (!$this->selectedThisElement($paymentMethod->payment_element)){
+            return false;
+        }
+
+        if(!is_array($paymentMethod->dotpay_waluty)){
+            return false;
+        }
+        return true;
+    }
+
+    private function getCurrency($paymentMethod)
+    {
+        $paymentMethod->payment_currency;
+
+        $q = 'SELECT currency_code_3 FROM #__virtuemart_currencies WHERE virtuemart_currency_id="' .$paymentMethod->payment_currency. '" ';
+        $db = JFactory::getDBO();
+        $db->setQuery($q);
+        return $db->loadResult();
+    }
 
     function plgVmConfirmedOrder($cart, $order)
 	{
