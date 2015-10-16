@@ -15,6 +15,10 @@ if (!class_exists('vmPSPlugin'))
 
 class plgVmPaymentDotpay extends vmPSPlugin {
 
+    const PLG_MESSAGE_STATUS_OK = 'PLG_DOTPAY_STATUS_OK';
+
+    const PLG_MESSAGE_STATUS_FAIL = 'PLG_DOTPAY_STATUS_FAIL';
+
     public static $_this = false;
 
     public function __construct(&$subject, $config)
@@ -291,91 +295,94 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         }
         
     public function plgVmOnPaymentNotification() {
+        $jinput = JFactory::getApplication()->input;
+        $paymentMethod = $this->getVmPluginMethod($jinput->get->get('pm', 0));
 
-    $virtuemart_paymentmethod_id = JRequest::getInt('pm', 0);
-
-	if(!($method = $this->getVmPluginMethod($virtuemart_paymentmethod_id))){
-			return null;
-     }
-
-	if(!$this->selectedThisElement($method->payment_element)) {
-			return false;
-	}
-        
-    if(isset($_POST['signature']) && $_SERVER['REMOTE_ADDR']=="195.150.9.37"){
-        $method = $this->getVmPluginMethod($virtuemart_paymentmethod_id);
-        $pin = $method-> dotpay_pin;
-        $sig = $pin;
-        $check_keys = array(
-                'id',
-                'operation_number',
-                'operation_type',
-                'operation_status',
-                'operation_amount',
-                'operation_currency',
-                'operation_withdrawal_amount',
-                'operation_commission_amount',
-                'operation_original_amount',
-                'operation_original_currency',
-                'operation_datetime',
-                'operation_related_number',
-                'control',
-                'description',
-                'email',
-                'p_info',
-                'p_email',
-                'channel',
-                'channel_country',
-                'geoip_country'
-            );
-
-        foreach ($check_keys as $value) {
-             if(array_key_exists($value, $_POST) === true) {
-                 $sig .= $_POST[$value];
-             }
+        if(!$this->isPluginValidated($paymentMethod)){
+            exit('plugin error');
         }
-        
-        if($_POST['signature'] == hash('sha256',$sig)) {
-            $db = JFactory::getDBO();
-            $q = 'SELECT dotpay.*, ord.order_status, usr.email  FROM '.$this->_tablename.' as dotpay JOIN `#__virtuemart_orders` as ord using(virtuemart_order_id) JOIN #__virtuemart_order_userinfos  as usr using(virtuemart_order_id)  WHERE dotpay.dotpay_control="' .$_POST['control']. '" ';
-            $db->setQuery($q);
-            $payment_db = $db->loadObject();
 
-            switch($_POST['operation_status']){
+        if(!$this->isIpValidated($paymentMethod)){
+            exit('untrusted_ip');
+        }
+
+        if(!$this->isSingnatureValidated($jinput->post, $paymentMethod)){
+            exit('signature mismatch');
+        }
+
+        if(!$this->isCurrencyMatch()){
+            exit('currency mismatch');
+        }
+
+        if(!$this->isPriceMatch()){
+            exit('price mismatch');
+        }
+
+        $paymentModel = $this->getPaymentModel($jinput->post);
+        $order_id = $paymentModel->virtuemart_order_id;
+
+        if($paymentModel->order_status != "C" && $paymentModel->order_status != 'X'){
+
+            switch($jinput->post->get('status')){
                 case 'completed':
-                    if($payment_db->order_status!="C" && $payment_db->order_status!='X'){
-                        $virtuemart_order_id = $payment_db->virtuemart_order_id;
-                        $message = 'PLG_DOTPAY_STATUS_OK';
-                        $this->NewStatus($virtuemart_order_id,$method->status_success, $message, $method->feedback);
-                    }
+                        $this->NewStatus($order_id, $paymentMethod->status_success, self::PLG_MESSAGE_STATUS_OK, $paymentMethod->feedback);
                     break;
                 case 'rejected':
-
-                    if($payment_db->order_status!="C" && $payment_db->order_status!='X'){
-                        $virtuemart_order_id = $payment_db->virtuemart_order_id;
-                        $message = 'PLG_DOTPAY_STATUS_FAIL';
-                        $status = $this->NewStatus($virtuemart_order_id,$method->status_canceled, $message, $method->feedback);
-                    }
+                        $this->NewStatus($order_id, $paymentMethod->status_canceled, self::PLG_MESSAGE_STATUS_FAIL, $paymentMethod->feedback);
                     break;
             }
-          
-             echo "OK";
-             exit();
         }
-        else {
-            error_log('BAD SIGNATURE');
-            echo('FAIL: SIGNATURE ERROR - CHECK PIN');            
-            exit();
+        exit('OK');
+    }
+
+    private function getPaymentModel($post)
+    {
+        $db = JFactory::getDBO();
+        $q = 'SELECT dotpay.*, ord.order_status, usr.email  FROM '.$this->_tablename.' as dotpay JOIN `#__virtuemart_orders` as ord using(virtuemart_order_id) JOIN #__virtuemart_order_userinfos  as usr using(virtuemart_order_id)  WHERE dotpay.dotpay_control="' .$post->get('control'). '" ';
+        $db->setQuery($q);
+        return $db->loadObject();
+    }
+
+
+    private function isSingnatureValidated($post, $paymentMethod)
+    {
+
+        $string = $paymentMethod->dotpay_pin .
+                  $post->get('id', '') .
+                  $post->get('operation_number', '') .
+                  $post->get('operation_type', '') .
+                  $post->get('operation_status', '') .
+                  $post->get('operation_amount', '') .
+                  $post->get('operation_currency', '') .
+                  $post->get('operation_withdrawal_amount', '') .
+                  $post->get('operation_commission_amount', '') .
+                  $post->get('operation_original_amount', '') .
+                  $post->get('operation_original_currency', '') .
+                  $post->get('operation_datetime', '') .
+                  $post->get('operation_related_number', '') .
+                  $post->get('control', '') .
+                  $post->get('description', '') .
+                  $post->get('email', '') .
+                  $post->get('p_info', '') .
+                  $post->get('p_email', '') .
+                  $post->get('channel', '') .
+                  $post->get('channel_country', '') .
+                  $post->get('geoip_country','');
+
+        if($post->get('signature') == hash('sha256',$string)){
+            return true;
         }
-         
-        
+    }
+
+    private function isIpValidated($paymentMethod)
+    {
+        if($_SERVER['REMOTE_ADDR'] == '195.150.9.37'){
+            return true;
         }
-        else {
-            error_log('BAD IP');
-			echo('FAIL: INCORRECT IP - '.($_SERVER['REMOTE_ADDR']));
-            exit();
+        if($_SERVER['REMOTE_ADDR'] == '127.0.0.1' && $paymentMethod->fake_real == '1'){
+            return true;
         }
-    }    
+    }
 
     function plgVmOnUserPaymentCancel() {
         if (!class_exists('VirtueMartModelOrders')) {
@@ -469,32 +476,18 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             0.01));
     }
 
-//    /**
-//     * Check if the payment conditions are fulfilled for this payment method
-//     * @author: Valerie Isaksen
-//     *
-//     * @param $cart_prices: cart prices
-//     * @param $payment
-//     * @return true: if the conditions are fulfilled, false otherwise
-//     *
-//
-//    protected function checkConditions($cart, $method, $cart_prices)
-//	{
-//		return true;
-//	}
-//    */
-//
+
     protected function checkConditions($cart, $method, $cart_prices) {
                
         $method->payment_logos = 'dp_logo_alpha_175_50.png';
         
-        if((strlen($method -> dotpay_id) < 6) || (strlen($method -> dotpay_id) > 6) ) {
+        if((strlen($method->dotpay_id) < 6) || (strlen($method -> dotpay_id) > 6) ) {
           //  echo('PLG_DOTPAY_INVALID_ID');
 			 JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay ID</>','error' );
             return false;
         };
         
-        if((strlen($method -> dotpay_pin) < 16) || (strlen($method -> dotpay_pin) > 32) ) {
+        if((strlen($method->dotpay_pin) < 16) || (strlen($method -> dotpay_pin) > 32) ) {
            // echo('PLG_DOTPAY_INVALID_PIN');
 			JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay PIN</b>','error' );
             return false;
