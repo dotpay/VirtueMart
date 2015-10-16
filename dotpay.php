@@ -310,15 +310,17 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             exit('signature mismatch');
         }
 
-        if(!$this->isCurrencyMatch()){
+        $paymentModel = $this->getPaymentModel($jinput->post->get('control'));
+
+        if(!$this->isCurrencyMatch($jinput->post, $paymentModel)){
             exit('currency mismatch');
         }
 
-        if(!$this->isPriceMatch()){
+        if(!$this->isPriceMatch($jinput->post, $paymentModel)){
             exit('price mismatch');
         }
 
-        $paymentModel = $this->getPaymentModel($jinput->post);
+        echo $paymentModel->
         $order_id = $paymentModel->virtuemart_order_id;
 
         if($paymentModel->order_status != "C" && $paymentModel->order_status != 'X'){
@@ -335,14 +337,23 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         exit('OK');
     }
 
-    private function getPaymentModel($post)
+    private function isCurrencyMatch($post, $paymentModel)
+    {
+        return $paymentModel->waluta_zamowienia == $post->get('operation_original_currency');
+    }
+
+    private function isPriceMatch($post, $paymentModel)
+    {
+        return $paymentModel->kwota_zamowienia == $post->get('operation_original_amount');
+    }
+
+    private function getPaymentModel($orderId)
     {
         $db = JFactory::getDBO();
-        $q = 'SELECT dotpay.*, ord.order_status, usr.email  FROM '.$this->_tablename.' as dotpay JOIN `#__virtuemart_orders` as ord using(virtuemart_order_id) JOIN #__virtuemart_order_userinfos  as usr using(virtuemart_order_id)  WHERE dotpay.dotpay_control="' .$post->get('control'). '" ';
+        $q = 'SELECT dotpay.*, ord.order_status, usr.email  FROM '.$this->_tablename.' as dotpay JOIN `#__virtuemart_orders` as ord using(virtuemart_order_id) JOIN #__virtuemart_order_userinfos  as usr using(virtuemart_order_id)  WHERE dotpay.dotpay_control="' .$orderId. '" ';
         $db->setQuery($q);
         return $db->loadObject();
     }
-
 
     private function isSingnatureValidated($post, $paymentMethod)
     {
@@ -443,6 +454,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 //
     function plgVmOnShowOrderBEPayment($virtuemart_order_id, $virtuemart_payment_id)
 	{
+        exit('gdzie to jest?');
 		if (!$this->selectedThisByMethodId($virtuemart_payment_id)) {
 			return null; // Another method was selected, do nothing
 		}
@@ -639,4 +651,3 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
 }
 
-// No closing tag
