@@ -36,10 +36,22 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         $this->setConfigParameterable($this->_configTableFieldName, $varsToPush);
 	}
 
+    /**
+     * Wewnetrzna metoda joomli wywolywana po instalacji plugina
+     * Tworzy tabele
+     *
+     * @return string
+     */
     protected function getVmPluginCreateTableSQL() {
         return $this->createTableSQL('Payment Dotpay Table');
     }
 
+    /**
+     * Metoda wywolywana przy instalacji pluginu
+     * definiowane sa w niej pola w nowej tabeli
+     *
+     * @return array
+     */
     public function getTableSQLFields()
 	{
 		return array(
@@ -57,32 +69,62 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		);
     }
 
-	public function plgVmConfirmDotpay($cart, $order, $auto_redirect = false, $form_method = "GET")
-	{
+//	public function plgVmConfirmDotpay($cart, $order, $auto_redirect = false, $form_method = "GET")
+//	{
+//        $orderDetails = $order['details']['BT'];
+//        $paymentMethod = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id);
+//        $currency = $this->getCurrency($paymentMethod);
+//
+//        if(!$this->isPluginValidated($paymentMethod)){
+//            return false;
+//        }
+//
+//		if (!class_exists('VirtueMartModelOrders')){
+//			require( JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php' );
+//		}
+//
+//        if(!$this->isCurrencyAvailable($paymentMethod, $currency)){
+//            return false;
+//        }
+//
+//        $orderData = array(
+//            'order_number'                  => $orderDetails->order_number,
+//            'payment_name'                  => $this->renderPluginName($paymentMethod, $order),
+//            'virtuemart_paymentmethod_id'   => $orderDetails->virtuemart_paymentmethod_id,
+//            'tax_id'                        => $paymentMethod->tax_id,
+//            'dotpay_control'                => $orderDetails->order_number,
+//            'amount'                        => number_format($orderDetails->order_total,2,".",""),
+//            'currency'                      => $currency,
+//            'url'                           => $this->getUrl($orderDetails),
+//            'urlc'                          => $this->getUrlc($orderDetails),
+//            'dotpay_id'                     => $paymentMethod->dotpay_id,
+//            'description'                   => 'Zamówienie nr '.$orderDetails->order_number,
+//            'lang'                          => $this->getLang(),
+//            'first_name'                    => $orderDetails->first_name,
+//            'last_name'                     => $orderDetails->last_name,
+//            'email'                         => $orderDetails->email,
+//            'city'                          => $orderDetails->city,
+//            'postcode'                      => $orderDetails->zip,
+//            'phone'                         => $orderDetails->phone_1,
+//            'country'                       => $this->getCountryCode($orderDetails),
+//        );
+//
+//        $this->saveOrder($orderData);
+//
+//		return  $this->prepareHtmlForm( $paymentMethod, $orderData);
+//    }
+
+    private function getOrderData( $paymentMethod, $order)
+    {
         $orderDetails = $order['details']['BT'];
-        $paymentMethod = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id);
-        $currency = $this->getCurrency($paymentMethod);
-
-        if(!$this->isPluginValidated($paymentMethod)){
-            return false;
-        }
-
-		if (!class_exists('VirtueMartModelOrders')){
-			require( JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php' );
-		}
-
-        if(!$this->isCurrencyAvailable($paymentMethod, $currency)){
-            return false;
-        }
-
-        $orderData = array(
+        return array(
             'order_number'                  => $orderDetails->order_number,
             'payment_name'                  => $this->renderPluginName($paymentMethod, $order),
             'virtuemart_paymentmethod_id'   => $orderDetails->virtuemart_paymentmethod_id,
             'tax_id'                        => $paymentMethod->tax_id,
             'dotpay_control'                => $orderDetails->order_number,
             'amount'                        => number_format($orderDetails->order_total,2,".",""),
-            'currency'                      => $currency,
+            'currency'                      => $this->getCurrency($paymentMethod),
             'url'                           => $this->getUrl($orderDetails),
             'urlc'                          => $this->getUrlc($orderDetails),
             'dotpay_id'                     => $paymentMethod->dotpay_id,
@@ -96,28 +138,23 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             'phone'                         => $orderDetails->phone_1,
             'country'                       => $this->getCountryCode($orderDetails),
         );
-
-        $this->saveOrder($orderData);
-
-		return  $this->prepareHtmlForm( $paymentMethod, $orderData);
     }
-
-
 
     //renderowanie formularza z guzikiem accept
     public function plgVmConfirmedOrder($cart, $order)
 	{
+        $paymentMethod = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id);
+        if(!$this->isPluginValidated($paymentMethod)){
+            return false;
+        }
 
-        if (!($html = $this->plgVmConfirmDotpay($cart, $order, true, "POST"))) {
-			return false;
-		}
+        $orderData  = $this->getOrderData($paymentMethod, $order);
+        $this->saveOrder($orderData);
 
-		if (!($method = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id))){
-			return null;
-		}
-		$nazwa_platnosci = $this->renderPluginName($method);
+		$nazwa_platnosci = $this->renderPluginName($paymentMethod);
 
-		return $this->processConfirmedOrderPaymentResponse(1, $cart, $order, $html, $nazwa_platnosci, $method->status_pending);
+        $html = $this->prepareHtmlForm( $paymentMethod, $orderData);
+		$this->processConfirmedOrderPaymentResponse(1, $cart, $order, $html, $nazwa_platnosci, $paymentMethod->status_pending);
 	}
 
     // weewnetrzna metoda , kazdy plugin to ma wywolywana po zaakceptowaniu
