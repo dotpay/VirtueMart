@@ -19,6 +19,8 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
     const PLG_MESSAGE_STATUS_FAIL = 'PLG_DOTPAY_STATUS_FAIL';
 
+    const DOTPAY_IP = '195.150.9.37';
+
     public static $_this = false;
 
     public function __construct(&$subject, $config)
@@ -166,7 +168,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
         $html = '';
         foreach($data as $key => $value){
-            $html .= '<input type="text" name="'.$key.'" value="'.$value.'" />';
+            $html .= '<input type="hidden" name="'.$key.'" value="'.$value.'" />';
         }
         return $html;
     }
@@ -320,21 +322,23 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             exit('price mismatch');
         }
 
-        echo $paymentModel->
+
+
         $order_id = $paymentModel->virtuemart_order_id;
 
         if($paymentModel->order_status != "C" && $paymentModel->order_status != 'X'){
 
             switch($jinput->post->get('status')){
                 case 'completed':
-                        $this->NewStatus($order_id, $paymentMethod->status_success, self::PLG_MESSAGE_STATUS_OK, $paymentMethod->feedback);
+                        $this->newStatus($order_id, $paymentMethod->status_success, self::PLG_MESSAGE_STATUS_OK, $paymentMethod->feedback);
                     break;
                 case 'rejected':
-                        $this->NewStatus($order_id, $paymentMethod->status_canceled, self::PLG_MESSAGE_STATUS_FAIL, $paymentMethod->feedback);
+                        $this->newStatus($order_id, $paymentMethod->status_canceled, self::PLG_MESSAGE_STATUS_FAIL, $paymentMethod->feedback);
                     break;
             }
+            exit('OK');
         }
-        exit('OK');
+
     }
 
     private function isCurrencyMatch($post, $paymentModel)
@@ -359,35 +363,36 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     {
 
         $string = $paymentMethod->dotpay_pin .
-                  $post->get('id', '') .
-                  $post->get('operation_number', '') .
-                  $post->get('operation_type', '') .
-                  $post->get('operation_status', '') .
-                  $post->get('operation_amount', '') .
-                  $post->get('operation_currency', '') .
-                  $post->get('operation_withdrawal_amount', '') .
-                  $post->get('operation_commission_amount', '') .
-                  $post->get('operation_original_amount', '') .
-                  $post->get('operation_original_currency', '') .
-                  $post->get('operation_datetime', '') .
-                  $post->get('operation_related_number', '') .
-                  $post->get('control', '') .
-                  $post->get('description', '') .
-                  $post->get('email', '') .
-                  $post->get('p_info', '') .
-                  $post->get('p_email', '') .
-                  $post->get('channel', '') .
-                  $post->get('channel_country', '') .
-                  $post->get('geoip_country','');
+                  $post->get('id', '', 'STRING') .
+                  $post->get('operation_number', '', 'STRING') .
+                  $post->get('operation_type', '', 'STRING') .
+                  $post->get('operation_status', '', 'STRING') .
+                  $post->get('operation_amount', '', 'STRING') .
+                  $post->get('operation_currency', '', 'STRING') .
+                  $post->get('operation_withdrawal_amount', '', 'STRING') .
+                  $post->get('operation_commission_amount', '', 'STRING') .
+                  $post->get('operation_original_amount', '', 'STRING') .
+                  $post->get('operation_original_currency', '', 'STRING') .
+                  $post->get('operation_datetime', '','STRING') .
+                  $post->get('operation_related_number', '', 'STRING') .
+                  $post->get('control', '', 'STRING') .
+                  $post->get('description', '','STRING') .
+                  $post->get('email', '', 'STRING') .
+                  $post->get('p_info', '', 'STRING') .
+                  $post->get('p_email', '', 'STRING') .
+                  $post->get('channel', '', 'STRING') .
+                  $post->get('channel_country', '', 'STRING') .
+                  $post->get('geoip_country','', 'STRING');
 
-        if($post->get('signature') == hash('sha256',$string)){
+
+        if($post->get('signature') == hash('sha256', $string)){
             return true;
         }
     }
 
     private function isIpValidated($paymentMethod)
     {
-        if($_SERVER['REMOTE_ADDR'] == '195.150.9.37'){
+        if($_SERVER['REMOTE_ADDR'] == self::DOTPAY_IP){
             return true;
         }
         if($_SERVER['REMOTE_ADDR'] == '127.0.0.1' && $paymentMethod->fake_real == '1'){
@@ -396,6 +401,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     }
 
     function plgVmOnUserPaymentCancel() {
+        $a = 'a';
         if (!class_exists('VirtueMartModelOrders')) {
             require (JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php');
         }
@@ -435,6 +441,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
 
     function _getTablepkeyValue($virtuemart_order_id) {
+        $a = 'a';
 		$db = JFactory::getDBO();
 		$q = 'SELECT ' . $this->_tablepkey . ' FROM `' . $this->_tablename . '` '
 			. 'WHERE `virtuemart_order_id` = ' . $virtuemart_order_id;
@@ -446,15 +453,10 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		}
 		return $pkey;
     }
-//
-//    /**
-//     * Display stored payment data for an order
-//     * @see components/com_virtuemart/helpers/vmPSPlugin::plgVmOnShowOrderBEPayment()
-//     */
-//
+
+
     function plgVmOnShowOrderBEPayment($virtuemart_order_id, $virtuemart_payment_id)
 	{
-        exit('gdzie to jest?');
 		if (!$this->selectedThisByMethodId($virtuemart_payment_id)) {
 			return null; // Another method was selected, do nothing
 		}
@@ -477,7 +479,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		return $html;
     }
 
-//
+
     function getCosts(VirtueMartCart $cart, $method, $cart_prices) {
         if (preg_match('/%$/', $method->cost_percent_total)) {
             $cost_percent_total = substr($method->cost_percent_total, 0, -1);
@@ -489,25 +491,20 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     }
 
 
-    protected function checkConditions($cart, $method, $cart_prices) {
-               
+    protected function checkConditions($cart, $method, $cart_prices)
+    {
         $method->payment_logos = 'dp_logo_alpha_175_50.png';
-        
         if((strlen($method->dotpay_id) < 6) || (strlen($method -> dotpay_id) > 6) ) {
-          //  echo('PLG_DOTPAY_INVALID_ID');
-			 JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay ID</>','error' );
+			JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay ID</>','error' );
             return false;
         };
         
         if((strlen($method->dotpay_pin) < 16) || (strlen($method -> dotpay_pin) > 32) ) {
-           // echo('PLG_DOTPAY_INVALID_PIN');
 			JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay PIN</b>','error' );
             return false;
         }
 
-		return true; 
-                
-                //TODO - check this result in futere.
+		return true;
     }
     
 
@@ -527,54 +524,40 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		return $pluginInfo->$idName;
 	}
 
-    function NewStatus($virtuemart_order_id, $new_stat, $note = "",  $send_info=1)
+    private function newStatus($order_id, $status, $note = "",  $notified = 1)
 	{
-			if (!class_exists('VirtueMartModelOrders'))
-			{
-				require( JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php' );
-			}
+        if (!class_exists('VirtueMartModelOrders')){
+            require( JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php' );
+        }
+
+        $lang = JFactory::getLanguage();
+        $lang->load('com_virtuemart',JPATH_ADMINISTRATOR);
+        $modelOrder = VmModel::getModel('orders');
+
+        $orderData = array(
+            'order_status'          => $status,
+            'virtuemart_order_id'   => $order_id,
+            'customer_notified'     => $notified,
+            'comments'              => $note
+        );
 
 
-			$lang = JFactory::getLanguage();
-			$lang->load('com_virtuemart',JPATH_ADMINISTRATOR);
+		$modelOrder->updateStatusForOneOrder($order_id, $orderData, true);
 
-        		$modelOrder = VmModel::getModel('orders');
-			
-		///	if(empty($modelOrder->getOrder($virtuemart_order_id)))
-		//	{
-	//			return false;
-	//		}
-
-			$order['order_status'] = $new_stat;
-			$order['virtuemart_order_id'] = $virtuemart_order_id;
-			$order['customer_notified'] = $send_info;
-			$order['comments'] = $note;
-			$modelOrder->updateStatusForOneOrder($virtuemart_order_id, $order, true);
-
-			$db = JFactory::getDBO();
+        $db = JFactory::getDBO();
 
 
-			if($new_stat=="C" || $new_stat=="X")
-			{
-				$q = 'UPDATE '.$this->_tablename.' SET modified_on=NOW(), locked_on=NOW() WHERE virtuemart_order_id='.$virtuemart_order_id.';   ';
-			}
-			else
-			{
-				$q = 'UPDATE '.$this->_tablename.' SET modified_on=NOW() WHERE virtuemart_order_id='.$virtuemart_order_id.';   ';
-			}
+        if($status == "C" || $status == "X"){
+            $q = 'UPDATE '.$this->_tablename.' SET modified_on=NOW(), locked_on=NOW() WHERE virtuemart_order_id='. $order_id.';   ';
+        }else{
+            $q = 'UPDATE '.$this->_tablename.' SET modified_on=NOW() WHERE virtuemart_order_id='. $order_id.';   ';
+        }
 
-			$db->setQuery($q);
-			
-		//	if(empty($db->query($q)))
-		//	{
-		//		return false;
-		//	}
+        $db->setQuery($q);
 
-			$message = 'PLG_DOTPAY_STATUS_CHANGE';
-
-			return $message;
+         return 'PLG_DOTPAY_STATUS_CHANGE';
 	}
-//
+
     function onShowOrderFE($virtuemart_order_id, $virtuemart_method_id, &$method_info)
 	 {
 	 	if (!($this->selectedThisByMethodId($virtuemart_method_id))) {
