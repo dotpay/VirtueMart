@@ -39,8 +39,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     protected function getVmPluginCreateTableSQL() {
         return $this->createTableSQL('Payment Dotpay Table');
     }
-    
-    
+
     public function getTableSQLFields()
 	{
 		return array(
@@ -103,137 +102,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		return  $this->prepareHtmlForm( $paymentMethod, $orderData);
     }
 
-    private function saveOrder($orderData){
-        $dataToSave = array(
-            'order_number'                  => $orderData['order_number'],
-            'payment_name'                  => $orderData['payment_name'],
-            'virtuemart_paymentmethod_id'   => $orderData['virtuemart_paymentmethod_id'],
-            'tax_id'                        => $orderData['tax_id'],
-            'dotpay_control'                => $orderData['dotpay_control'],
-            'kwota_zamowienia'              => $orderData['amount'],
-            'waluta_zamowienia'             => $orderData['currency'],
-        );
 
-        $this->storePSPluginInternalData($dataToSave);
-    }
-
-    private function getLang()
-    {
-       $lang = JFactory::getLanguage();
-       return  substr($lang->getTag(),0,2);
-    }
-
-    private function getUrl($orderDetails)
-    {
-        return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginresponsereceived&pm='.$orderDetails->virtuemart_paymentmethod_id;
-    }
-
-    private function getUrlc($orderDetails)
-    {
-        return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginnotification&tmpl=component&pm='.$orderDetails->virtuemart_paymentmethod_id;
-    }
-
-    private function prepareHtmlForm( $paymentMethod, $orderData)
-    {
-        $html = '
-		<div style="text-align: center; width: 100%; ">
-		<form action="'. $this->getDotpayUrl($paymentMethod) .'" method="Post" class="form" name="platnosc_dotpay" id="platnosc_dotpay">';
-        $html .= $this->getHtmlInputs($orderData);
-
-        $html .= $this->getHtmlFormEnd();
-        return $html;
-    }
-
-    private function getHtmlInputs($orderData)
-    {
-        $data = array(
-            'id'            => $orderData['dotpay_id'],
-            'amount'        => $orderData['amount'],
-            'currency'      => $orderData['currency'],
-            'control'       => $orderData['dotpay_control'],
-            'description'   => $orderData['description'],
-            'lang'          => $orderData['lang'],
-            'type'          => 0,
-            'url'           => $orderData['url'],
-            'urlc'          => $orderData['urlc'],
-            'firstname'     => $orderData['first_name'],
-            'lastname'      => $orderData['lastname'],
-            'email'         => $orderData['email'],
-            'city'          => $orderData['city'],
-            'postcode'      => $orderData['postcode'],
-            'phone'         => $orderData['phone'],
-            'country'       => $orderData['country'],
-            'api_version'   => 'dev'
-        );
-
-        $html = '';
-        foreach($data as $key => $value){
-            $html .= '<input type="hidden" name="'.$key.'" value="'.$value.'" />';
-        }
-        return $html;
-    }
-
-    private function getHtmlFormEnd()
-    {
-        $src = JURI::root().'media/images/stories/virtuemart/payment/'.'dp_logo_alpha_175_50.png';
-
-		$html = '<br /><b>Opłać zamównienie poprzez Dotpay:<b> <br /><br />';
-		$html .='<input name="submit_send" value="" type="submit" style="border: 0; background: url(\''.$src.'\') no-repeat; width: 200px; height: 100px;padding-top:10px" /> <br /><br /><br />';
-        $html .='</div>';
-
-        $html .= '<script type="text/javascript">';
-        $html .=    'jQuery.noConflict();';
-		$html .=	'jQuery(document).ready(function() {';
-        $html .=           'jQuery("#platnosc_dotpay").submit();';
-        $html .=    '});';
-		$html .= '</script>';
-        return $html;
-    }
-
-    private function getDotpayUrl($paymentMethod)
-    {
-        if ($paymentMethod->fake_real === '1') {
-            return  'https://ssl.dotpay.pl/test_payment/';
-        }
-        return 'https://ssl.dotpay.pl/';
-    }
-
-    private function getCountryCode($orderDetails){
-        $q = 'SELECT country_3_code FROM #__virtuemart_countries WHERE virtuemart_country_id='. $orderDetails->virtuemart_country_id.' ';
-        $db = JFactory::getDBO();
-        $db->setQuery($q);
-        return $db->loadResult();
-    }
-
-    private function isCurrencyAvailable($paymentMethod, $currency)
-    {
-        return in_array($currency, $paymentMethod->dotpay_waluty);
-    }
-
-    private function isPluginValidated($paymentMethod){
-        if (!$paymentMethod){
-            return false; // Inna metoda została wybrana, nie rób nic.
-        }
-
-        if (!$this->selectedThisElement($paymentMethod->payment_element)){
-            return false;
-        }
-
-        if(!is_array($paymentMethod->dotpay_waluty)){
-            return false;
-        }
-        return true;
-    }
-
-    private function getCurrency($paymentMethod)
-    {
-        $paymentMethod->payment_currency;
-
-        $q = 'SELECT currency_code_3 FROM #__virtuemart_currencies WHERE virtuemart_currency_id="' .$paymentMethod->payment_currency. '" ';
-        $db = JFactory::getDBO();
-        $db->setQuery($q);
-        return $db->loadResult();
-    }
 
     //renderowanie formularza z guzikiem accept
     public function plgVmConfirmedOrder($cart, $order)
@@ -285,7 +154,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         if(!$this->isPluginValidated($paymentMethod)){
             return false;
         }
-
 
         if($jinput->post->get('status') == "OK"){
             JFactory::getApplication()->enqueueMessage( '<br><b>Płatność przebiegła pomyślnie !</b><br>Dziękujemy za dokonanie transakcji za pośrednictwem Dotpay.','message' );
@@ -341,64 +209,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
     }
 
-    private function isCurrencyMatch($post, $paymentModel)
-    {
-        return $paymentModel->waluta_zamowienia == $post->get('operation_original_currency');
-    }
 
-    private function isPriceMatch($post, $paymentModel)
-    {
-        return $paymentModel->kwota_zamowienia == $post->get('operation_original_amount');
-    }
-
-    private function getPaymentModel($orderId)
-    {
-        $db = JFactory::getDBO();
-        $q = 'SELECT dotpay.*, ord.order_status, usr.email  FROM '.$this->_tablename.' as dotpay JOIN `#__virtuemart_orders` as ord using(virtuemart_order_id) JOIN #__virtuemart_order_userinfos  as usr using(virtuemart_order_id)  WHERE dotpay.dotpay_control="' .$orderId. '" ';
-        $db->setQuery($q);
-        return $db->loadObject();
-    }
-
-    private function isSingnatureValidated($post, $paymentMethod)
-    {
-
-        $string = $paymentMethod->dotpay_pin .
-                  $post->get('id', '', 'STRING') .
-                  $post->get('operation_number', '', 'STRING') .
-                  $post->get('operation_type', '', 'STRING') .
-                  $post->get('operation_status', '', 'STRING') .
-                  $post->get('operation_amount', '', 'STRING') .
-                  $post->get('operation_currency', '', 'STRING') .
-                  $post->get('operation_withdrawal_amount', '', 'STRING') .
-                  $post->get('operation_commission_amount', '', 'STRING') .
-                  $post->get('operation_original_amount', '', 'STRING') .
-                  $post->get('operation_original_currency', '', 'STRING') .
-                  $post->get('operation_datetime', '','STRING') .
-                  $post->get('operation_related_number', '', 'STRING') .
-                  $post->get('control', '', 'STRING') .
-                  $post->get('description', '','STRING') .
-                  $post->get('email', '', 'STRING') .
-                  $post->get('p_info', '', 'STRING') .
-                  $post->get('p_email', '', 'STRING') .
-                  $post->get('channel', '', 'STRING') .
-                  $post->get('channel_country', '', 'STRING') .
-                  $post->get('geoip_country','', 'STRING');
-
-
-        if($post->get('signature') == hash('sha256', $string)){
-            return true;
-        }
-    }
-
-    private function isIpValidated($paymentMethod)
-    {
-        if($_SERVER['REMOTE_ADDR'] == self::DOTPAY_IP){
-            return true;
-        }
-        if($_SERVER['REMOTE_ADDR'] == '127.0.0.1' && $paymentMethod->fake_real == '1'){
-            return true;
-        }
-    }
 
     function plgVmOnUserPaymentCancel() {
         $a = 'a';
@@ -524,39 +335,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		return $pluginInfo->$idName;
 	}
 
-    private function newStatus($order_id, $status, $note = "",  $notified = 1)
-	{
-        if (!class_exists('VirtueMartModelOrders')){
-            require( JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php' );
-        }
 
-        $lang = JFactory::getLanguage();
-        $lang->load('com_virtuemart',JPATH_ADMINISTRATOR);
-        $modelOrder = VmModel::getModel('orders');
-
-        $orderData = array(
-            'order_status'          => $status,
-            'virtuemart_order_id'   => $order_id,
-            'customer_notified'     => $notified,
-            'comments'              => $note
-        );
-
-
-		$modelOrder->updateStatusForOneOrder($order_id, $orderData, true);
-
-        $db = JFactory::getDBO();
-
-
-        if($status == "C" || $status == "X"){
-            $q = 'UPDATE '.$this->_tablename.' SET modified_on=NOW(), locked_on=NOW() WHERE virtuemart_order_id='. $order_id.';   ';
-        }else{
-            $q = 'UPDATE '.$this->_tablename.' SET modified_on=NOW() WHERE virtuemart_order_id='. $order_id.';   ';
-        }
-
-        $db->setQuery($q);
-
-         return 'PLG_DOTPAY_STATUS_CHANGE';
-	}
 
     function onShowOrderFE($virtuemart_order_id, $virtuemart_method_id, &$method_info)
 	 {
@@ -631,6 +410,229 @@ class plgVmPaymentDotpay extends vmPSPlugin {
                 return $this->getTablePluginParams($psType, $name, $id, $xParams, $varsToPush);
         }
 
+    private function newStatus($order_id, $status, $note = "",  $notified = 1)
+    {
+        if (!class_exists('VirtueMartModelOrders')){
+            require( JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php' );
+        }
 
+        $lang = JFactory::getLanguage();
+        $lang->load('com_virtuemart',JPATH_ADMINISTRATOR);
+        $modelOrder = VmModel::getModel('orders');
+
+        $orderData = array(
+            'order_status'          => $status,
+            'virtuemart_order_id'   => $order_id,
+            'customer_notified'     => $notified,
+            'comments'              => $note
+        );
+
+
+        $modelOrder->updateStatusForOneOrder($order_id, $orderData, true);
+
+        $db = JFactory::getDBO();
+
+
+        if($status == "C" || $status == "X"){
+            $q = 'UPDATE '.$this->_tablename.' SET modified_on=NOW(), locked_on=NOW() WHERE virtuemart_order_id='. $order_id.';   ';
+        }else{
+            $q = 'UPDATE '.$this->_tablename.' SET modified_on=NOW() WHERE virtuemart_order_id='. $order_id.';   ';
+        }
+
+        $db->setQuery($q);
+
+        return 'PLG_DOTPAY_STATUS_CHANGE';
+    }
+
+    private function isCurrencyMatch($post, $paymentModel)
+    {
+        return $paymentModel->waluta_zamowienia == $post->get('operation_original_currency');
+    }
+
+    private function isPriceMatch($post, $paymentModel)
+    {
+        return $paymentModel->kwota_zamowienia == $post->get('operation_original_amount');
+    }
+
+    private function getPaymentModel($orderId)
+    {
+        $db = JFactory::getDBO();
+        $q = 'SELECT dotpay.*, ord.order_status, usr.email  FROM '.$this->_tablename.' as dotpay JOIN `#__virtuemart_orders` as ord using(virtuemart_order_id) JOIN #__virtuemart_order_userinfos  as usr using(virtuemart_order_id)  WHERE dotpay.dotpay_control="' .$orderId. '" ';
+        $db->setQuery($q);
+        return $db->loadObject();
+    }
+
+    private function isSingnatureValidated($post, $paymentMethod)
+    {
+
+        $string = $paymentMethod->dotpay_pin .
+            $post->get('id', '', 'STRING') .
+            $post->get('operation_number', '', 'STRING') .
+            $post->get('operation_type', '', 'STRING') .
+            $post->get('operation_status', '', 'STRING') .
+            $post->get('operation_amount', '', 'STRING') .
+            $post->get('operation_currency', '', 'STRING') .
+            $post->get('operation_withdrawal_amount', '', 'STRING') .
+            $post->get('operation_commission_amount', '', 'STRING') .
+            $post->get('operation_original_amount', '', 'STRING') .
+            $post->get('operation_original_currency', '', 'STRING') .
+            $post->get('operation_datetime', '','STRING') .
+            $post->get('operation_related_number', '', 'STRING') .
+            $post->get('control', '', 'STRING') .
+            $post->get('description', '','STRING') .
+            $post->get('email', '', 'STRING') .
+            $post->get('p_info', '', 'STRING') .
+            $post->get('p_email', '', 'STRING') .
+            $post->get('channel', '', 'STRING') .
+            $post->get('channel_country', '', 'STRING') .
+            $post->get('geoip_country','', 'STRING');
+
+
+        if($post->get('signature') == hash('sha256', $string)){
+            return true;
+        }
+    }
+
+    private function isIpValidated($paymentMethod)
+    {
+        if($_SERVER['REMOTE_ADDR'] == self::DOTPAY_IP){
+            return true;
+        }
+        if($_SERVER['REMOTE_ADDR'] == '127.0.0.1' && $paymentMethod->fake_real == '1'){
+            return true;
+        }
+    }
+
+    private function saveOrder($orderData){
+        $dataToSave = array(
+            'order_number'                  => $orderData['order_number'],
+            'payment_name'                  => $orderData['payment_name'],
+            'virtuemart_paymentmethod_id'   => $orderData['virtuemart_paymentmethod_id'],
+            'tax_id'                        => $orderData['tax_id'],
+            'dotpay_control'                => $orderData['dotpay_control'],
+            'kwota_zamowienia'              => $orderData['amount'],
+            'waluta_zamowienia'             => $orderData['currency'],
+        );
+
+        $this->storePSPluginInternalData($dataToSave);
+    }
+
+    private function getLang()
+    {
+        $lang = JFactory::getLanguage();
+        return  substr($lang->getTag(),0,2);
+    }
+
+    private function getUrl($orderDetails)
+    {
+        return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginresponsereceived&pm='.$orderDetails->virtuemart_paymentmethod_id;
+    }
+
+    private function getUrlc($orderDetails)
+    {
+        return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginnotification&tmpl=component&pm='.$orderDetails->virtuemart_paymentmethod_id;
+    }
+
+    private function prepareHtmlForm( $paymentMethod, $orderData)
+    {
+        $html = '
+		<div style="text-align: center; width: 100%; ">
+		<form action="'. $this->getDotpayUrl($paymentMethod) .'" method="Post" class="form" name="platnosc_dotpay" id="platnosc_dotpay">';
+        $html .= $this->getHtmlInputs($orderData);
+
+        $html .= $this->getHtmlFormEnd();
+        return $html;
+    }
+
+    private function getHtmlInputs($orderData)
+    {
+        $data = array(
+            'id'            => $orderData['dotpay_id'],
+            'amount'        => $orderData['amount'],
+            'currency'      => $orderData['currency'],
+            'control'       => $orderData['dotpay_control'],
+            'description'   => $orderData['description'],
+            'lang'          => $orderData['lang'],
+            'type'          => 0,
+            'url'           => $orderData['url'],
+            'urlc'          => $orderData['urlc'],
+            'firstname'     => $orderData['first_name'],
+            'lastname'      => $orderData['lastname'],
+            'email'         => $orderData['email'],
+            'city'          => $orderData['city'],
+            'postcode'      => $orderData['postcode'],
+            'phone'         => $orderData['phone'],
+            'country'       => $orderData['country'],
+            'api_version'   => 'dev'
+        );
+
+        $html = '';
+        foreach($data as $key => $value){
+            $html .= '<input type="hidden" name="'.$key.'" value="'.$value.'" />';
+        }
+        return $html;
+    }
+
+    private function getHtmlFormEnd()
+    {
+        $src = JURI::root().'media/images/stories/virtuemart/payment/'.'dp_logo_alpha_175_50.png';
+
+        $html = '<br /><b>Opłać zamównienie poprzez Dotpay:<b> <br /><br />';
+        $html .='<input name="submit_send" value="" type="submit" style="border: 0; background: url(\''.$src.'\') no-repeat; width: 200px; height: 100px;padding-top:10px" /> <br /><br /><br />';
+        $html .='</div>';
+
+        $html .= '<script type="text/javascript">';
+        $html .=    'jQuery.noConflict();';
+        $html .=	'jQuery(document).ready(function() {';
+        $html .=           'jQuery("#platnosc_dotpay").submit();';
+        $html .=    '});';
+        $html .= '</script>';
+        return $html;
+    }
+
+    private function getDotpayUrl($paymentMethod)
+    {
+        if ($paymentMethod->fake_real === '1') {
+            return  'https://ssl.dotpay.pl/test_payment/';
+        }
+        return 'https://ssl.dotpay.pl/';
+    }
+
+    private function getCountryCode($orderDetails){
+        $q = 'SELECT country_3_code FROM #__virtuemart_countries WHERE virtuemart_country_id='. $orderDetails->virtuemart_country_id.' ';
+        $db = JFactory::getDBO();
+        $db->setQuery($q);
+        return $db->loadResult();
+    }
+
+    private function isCurrencyAvailable($paymentMethod, $currency)
+    {
+        return in_array($currency, $paymentMethod->dotpay_waluty);
+    }
+
+    private function isPluginValidated($paymentMethod){
+        if (!$paymentMethod){
+            return false; // Inna metoda została wybrana, nie rób nic.
+        }
+
+        if (!$this->selectedThisElement($paymentMethod->payment_element)){
+            return false;
+        }
+
+        if(!is_array($paymentMethod->dotpay_waluty)){
+            return false;
+        }
+        return true;
+    }
+
+    private function getCurrency($paymentMethod)
+    {
+        $paymentMethod->payment_currency;
+
+        $q = 'SELECT currency_code_3 FROM #__virtuemart_currencies WHERE virtuemart_currency_id="' .$paymentMethod->payment_currency. '" ';
+        $db = JFactory::getDBO();
+        $db->setQuery($q);
+        return $db->loadResult();
+    }
 }
 
