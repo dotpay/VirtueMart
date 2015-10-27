@@ -233,66 +233,66 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $db->loadResult();
     }
 
-    function plgVmConfirmedOrder($cart, $order)
+    //renderowanie formularza z guzikiem accept
+    public function plgVmConfirmedOrder($cart, $order)
 	{
-		// no $html - false
-		if (!($html = $this->plgVmConfirmDotpay($cart, $order, true, "POST"))) {
+
+        if (!($html = $this->plgVmConfirmDotpay($cart, $order, true, "POST"))) {
 			return false;
 		}
 
-		
-		if (!($method = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id)))
-		{
+		if (!($method = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id))){
 			return null;
 		}
 		$nazwa_platnosci = $this->renderPluginName($method);
-		
+
 		return $this->processConfirmedOrderPaymentResponse(1, $cart, $order, $html, $nazwa_platnosci, $method->status_pending);
 	}
 
-    function plgVmgetPaymentCurrency($virtuemart_paymentmethod_id, &$paymentCurrencyId)
+    // weewnetrzna metoda , kazdy plugin to ma wywolywana po zaakceptowaniu
+    public function plgVmgetPaymentCurrency($virtuemart_paymentmethod_id, &$paymentCurrencyId)
 	{
-		if (!($method = $this->getVmPluginMethod($virtuemart_paymentmethod_id))) {
-			return null; // Another method was selected, do nothing
-		}
-		if (!$this->selectedThisElement($method->payment_element)) {
-			return false;
-		}
-		 $this->getPaymentCurrency($method);
+        $paymentMethod = $this->getVmPluginMethod($virtuemart_paymentmethod_id);
 
-		$paymentCurrencyId = $method->payment_currency;
+        if(!$this->isPluginValidated($paymentMethod)){
+            return null;
+        }
+		$this->getPaymentCurrency($paymentMethod);
+		$paymentCurrencyId = $paymentMethod->payment_currency;
    }
 
+    function uplgVmgetPaymentCurrency($virtuemart_paymentmethod_id, &$paymentCurrencyId)
+    {
+        if (!($method = $this->getVmPluginMethod($virtuemart_paymentmethod_id))) {
+            return null; // Another method was selected, do nothing
+        }
+        if (!$this->selectedThisElement($method->payment_element)) {
+            return false;
+        }
+        $this->getPaymentCurrency($method);
 
-	function plgVmOnPaymentResponseReceived(&$html)
-        {
+        $paymentCurrencyId = $method->payment_currency;
+    }
 
-                   $virtuemart_paymentmethod_id = JRequest::getInt('pm', 0);
+    //thankyou page
+	public function plgVmOnPaymentResponseReceived(&$html)
+    {
+        $jinput = JFactory::getApplication()->input;
+        $paymentMethod = $this->getVmPluginMethod($jinput->get->get('pm', 0));
 
-		if (!($method = $this->getVmPluginMethod($virtuemart_paymentmethod_id))) {
-			return null;
-		}
+        if(!$this->isPluginValidated($paymentMethod)){
+            return false;
+        }
 
-		if (!$this->selectedThisElement($method->payment_element)) {
-			return false;
-	}
-//
-//
-//        // info po powrocie
-        if(isset($_POST['status']) && $_POST['status']=="OK")
-        {
-            // pozytywna
+
+        if($jinput->post->get('status') == "OK"){
             JFactory::getApplication()->enqueueMessage( '<br><b>Płatność przebiegła pomyślnie !</b><br>Dziękujemy za dokonanie transakcji za pośrednictwem Dotpay.','message' );
             return true;
         }
-        elseif(isset($_POST['status']) && $_POST['status']=="FAIL")
-        {
-            // negatywna
-            JFactory::getApplication()->enqueueMessage( '<br><b>Płatność nie doszła do skutku !</b><br>Transakcja za pośrednictwem Dotpay nie została przeprowadzona poprawnie.<br>Jeżeli doszło do obciążenia Twojego rachunku bankowego, prosimy o zgłoszenie tego faktu do właściciela sklepu z podaniem numeru zamównienia oraz transakcji.','error' );
-			return true;
-        }
 
-        }
+        JFactory::getApplication()->enqueueMessage( '<br><b>Płatność nie doszła do skutku !</b><br>Transakcja za pośrednictwem Dotpay nie została przeprowadzona poprawnie.<br>Jeżeli doszło do obciążenia Twojego rachunku bankowego, prosimy o zgłoszenie tego faktu do właściciela sklepu z podaniem numeru zamównienia oraz transakcji.','error' );
+        return true;
+    }
         
     public function plgVmOnPaymentNotification() {
         $jinput = JFactory::getApplication()->input;
