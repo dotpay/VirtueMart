@@ -69,51 +69,13 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		);
     }
 
-//	public function plgVmConfirmDotpay($cart, $order, $auto_redirect = false, $form_method = "GET")
-//	{
-//        $orderDetails = $order['details']['BT'];
-//        $paymentMethod = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id);
-//        $currency = $this->getCurrency($paymentMethod);
-//
-//        if(!$this->isPluginValidated($paymentMethod)){
-//            return false;
-//        }
-//
-//		if (!class_exists('VirtueMartModelOrders')){
-//			require( JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php' );
-//		}
-//
-//        if(!$this->isCurrencyAvailable($paymentMethod, $currency)){
-//            return false;
-//        }
-//
-//        $orderData = array(
-//            'order_number'                  => $orderDetails->order_number,
-//            'payment_name'                  => $this->renderPluginName($paymentMethod, $order),
-//            'virtuemart_paymentmethod_id'   => $orderDetails->virtuemart_paymentmethod_id,
-//            'tax_id'                        => $paymentMethod->tax_id,
-//            'dotpay_control'                => $orderDetails->order_number,
-//            'amount'                        => number_format($orderDetails->order_total,2,".",""),
-//            'currency'                      => $currency,
-//            'url'                           => $this->getUrl($orderDetails),
-//            'urlc'                          => $this->getUrlc($orderDetails),
-//            'dotpay_id'                     => $paymentMethod->dotpay_id,
-//            'description'                   => 'Zamówienie nr '.$orderDetails->order_number,
-//            'lang'                          => $this->getLang(),
-//            'first_name'                    => $orderDetails->first_name,
-//            'last_name'                     => $orderDetails->last_name,
-//            'email'                         => $orderDetails->email,
-//            'city'                          => $orderDetails->city,
-//            'postcode'                      => $orderDetails->zip,
-//            'phone'                         => $orderDetails->phone_1,
-//            'country'                       => $this->getCountryCode($orderDetails),
-//        );
-//
-//        $this->saveOrder($orderData);
-//
-//		return  $this->prepareHtmlForm( $paymentMethod, $orderData);
-//    }
-
+    /**
+     * Zwraca dane do formularza ktory przesyla je pozniej do dotpay
+     *
+     * @param $paymentMethod
+     * @param $order
+     * @return array
+     */
     private function getOrderData( $paymentMethod, $order)
     {
         $orderDetails = $order['details']['BT'];
@@ -140,24 +102,42 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         );
     }
 
-    //renderowanie formularza z guzikiem accept
+
+    /**
+     * Metoda wywolywana do wyrenderowania formularza
+     *
+     * @param $cart
+     * @param $order
+     * @return bool
+     */
     public function plgVmConfirmedOrder($cart, $order)
 	{
         $paymentMethod = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id);
         if(!$this->isPluginValidated($paymentMethod)){
             return false;
         }
+        if(!$this->isCurrencyAvailable($paymentMethod)){
+            return false;
+        }
 
         $orderData  = $this->getOrderData($paymentMethod, $order);
         $this->saveOrder($orderData);
 
-		$nazwa_platnosci = $this->renderPluginName($paymentMethod);
-
+		$paymentName = $this->renderPluginName($paymentMethod);
         $html = $this->prepareHtmlForm( $paymentMethod, $orderData);
-		$this->processConfirmedOrderPaymentResponse(1, $cart, $order, $html, $nazwa_platnosci, $paymentMethod->status_pending);
+        $status = $paymentMethod->status_pending;
+		$this->processConfirmedOrderPaymentResponse(1, $cart, $order, $html, $paymentName, $status);
 	}
 
-    // weewnetrzna metoda , kazdy plugin to ma wywolywana po zaakceptowaniu
+
+    /**
+     *
+     * Wewnetrzna metoda, kazdy plugin musi ja miec zaimplementowana
+     *
+     * @param $virtuemart_paymentmethod_id
+     * @param $paymentCurrencyId
+     * @return null
+     */
     public function plgVmgetPaymentCurrency($virtuemart_paymentmethod_id, &$paymentCurrencyId)
 	{
         $paymentMethod = $this->getVmPluginMethod($virtuemart_paymentmethod_id);
@@ -169,21 +149,16 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		$paymentCurrencyId = $paymentMethod->payment_currency;
    }
 
-    function uplgVmgetPaymentCurrency($virtuemart_paymentmethod_id, &$paymentCurrencyId)
-    {
-        if (!($method = $this->getVmPluginMethod($virtuemart_paymentmethod_id))) {
-            return null; // Another method was selected, do nothing
-        }
-        if (!$this->selectedThisElement($method->payment_element)) {
-            return false;
-        }
-        $this->getPaymentCurrency($method);
 
-        $paymentCurrencyId = $method->payment_currency;
-    }
-
-    //thankyou page
-	public function plgVmOnPaymentResponseReceived(&$html)
+    /**
+     *
+     * Strna thank you renderowana po powroceniu do sklepu,
+     * w zaleznosci od statusu przekazuje odpowiednia tresc
+     *
+     * @param $html
+     * @return bool
+     */
+    public function plgVmOnPaymentResponseReceived(&$html)
     {
         $jinput = JFactory::getApplication()->input;
         $paymentMethod = $this->getVmPluginMethod($jinput->get->get('pm', 0));
@@ -200,7 +175,10 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         JFactory::getApplication()->enqueueMessage( '<br><b>Płatność nie doszła do skutku !</b><br>Transakcja za pośrednictwem Dotpay nie została przeprowadzona poprawnie.<br>Jeżeli doszło do obciążenia Twojego rachunku bankowego, prosimy o zgłoszenie tego faktu do właściciela sklepu z podaniem numeru zamównienia oraz transakcji.','error' );
         return true;
     }
-        
+
+    /**
+     * Procesowanie odpowiedzi od dotpay
+     */
     public function plgVmOnPaymentNotification() {
         $jinput = JFactory::getApplication()->input;
         $paymentMethod = $this->getVmPluginMethod($jinput->get->get('pm', 0));
@@ -227,15 +205,15 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             exit('price mismatch');
         }
 
-
-
         $order_id = $paymentModel->virtuemart_order_id;
 
         if($paymentModel->order_status != "C" && $paymentModel->order_status != 'X'){
 
-            switch($jinput->post->get('status')){
+
+            switch($jinput->post->get('operation_status')){
                 case 'completed':
                         $this->newStatus($order_id, $paymentMethod->status_success, self::PLG_MESSAGE_STATUS_OK, $paymentMethod->feedback);
+
                     break;
                 case 'rejected':
                         $this->newStatus($order_id, $paymentMethod->status_canceled, self::PLG_MESSAGE_STATUS_FAIL, $paymentMethod->feedback);
@@ -243,13 +221,28 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             }
             exit('OK');
         }
-
     }
 
 
+    protected function checkConditions($cart, $method, $cart_prices)
+    {
+        $method->payment_logos = 'dp_logo_alpha_175_50.png';
+        if((strlen($method->dotpay_id) < 6) || (strlen($method -> dotpay_id) > 6) ) {
+            JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay ID</>','error' );
+            return false;
+        };
+
+        if((strlen($method->dotpay_pin) < 16) || (strlen($method -> dotpay_pin) > 32) ) {
+            JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay PIN</b>','error' );
+            return false;
+        }
+
+        return true;
+    }
+
 
     function plgVmOnUserPaymentCancel() {
-        $a = 'a';
+
         if (!class_exists('VirtueMartModelOrders')) {
             require (JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php');
         }
@@ -339,23 +332,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     }
 
 
-    protected function checkConditions($cart, $method, $cart_prices)
-    {
-        $method->payment_logos = 'dp_logo_alpha_175_50.png';
-        if((strlen($method->dotpay_id) < 6) || (strlen($method -> dotpay_id) > 6) ) {
-			JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay ID</>','error' );
-            return false;
-        };
-        
-        if((strlen($method->dotpay_pin) < 16) || (strlen($method -> dotpay_pin) > 32) ) {
-			JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay PIN</b>','error' );
-            return false;
-        }
-
-		return true;
-    }
-    
-
     function getOrderMethodNamebyOrderId ($virtuemart_order_id) {
 
 	$db = JFactory::getDBO ();
@@ -371,8 +347,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
 		return $pluginInfo->$idName;
 	}
-
-
 
     function onShowOrderFE($virtuemart_order_id, $virtuemart_method_id, &$method_info)
 	 {
@@ -417,35 +391,31 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         	}
 	 }
 
-
-
-//TODO Check why after implemented system not storing data form xml install file.
-//         
-      function plgVmOnStoreInstallPaymentPluginTable($jplugin_id)
+    function plgVmOnStoreInstallPaymentPluginTable($jplugin_id)
 	{
-		return $this->onStoreInstallPluginTable($jplugin_id);
-        }         
+	    return $this->onStoreInstallPluginTable($jplugin_id);
+    }
 
 	function plgVmSetOnTablePluginParamsPayment($name, $id, &$table) {
-                return $this->setOnTablePluginParams($name, $id, $table);
+        return $this->setOnTablePluginParams($name, $id, $table);
 	}
 
 	function plgVmDeclarePluginParamsPaymentVM3(&$data) {
-           $data->payment_params .= 'payment_logos="dp_logo_alpha_175_50.png"|payment_image="dp_logo_alpha_175_50.png"';
-            return $this->declarePluginParams('payment', $data);
+       $data->payment_params .= 'payment_logos="dp_logo_alpha_175_50.png"|payment_image="dp_logo_alpha_175_50.png"';
+       return $this->declarePluginParams('payment', $data);
 	}
         
-        public function plgVmDisplayListFEPayment(VirtueMartCart $cart, $selected = 0, &$htmlIn){
-         return $this->displayListFE($cart, $selected, $htmlIn);
-        }
+    public function plgVmDisplayListFEPayment(VirtueMartCart $cart, $selected = 0, &$htmlIn){
+       return $this->displayListFE($cart, $selected, $htmlIn);
+    }
         
-        public function plgVmonSelectedCalculatePricePayment(VirtueMartCart $cart, array &$cart_prices, &$cart_prices_name)	{
+    public function plgVmonSelectedCalculatePricePayment(VirtueMartCart $cart, array &$cart_prices, &$cart_prices_name)	{
 		return $this->onSelectedCalculatePrice($cart, $cart_prices, $cart_prices_name);
-        }
+    }
         
-        function plgVmGetTablePluginParams($psType, $name, $id, &$xParams, &$varsToPush){
-                return $this->getTablePluginParams($psType, $name, $id, $xParams, $varsToPush);
-        }
+    function plgVmGetTablePluginParams($psType, $name, $id, &$xParams, &$varsToPush){
+        return $this->getTablePluginParams($psType, $name, $id, $xParams, $varsToPush);
+    }
 
     private function newStatus($order_id, $status, $note = "",  $notified = 1)
     {
@@ -642,9 +612,9 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $db->loadResult();
     }
 
-    private function isCurrencyAvailable($paymentMethod, $currency)
+    private function isCurrencyAvailable($paymentMethod)
     {
-        return in_array($currency, $paymentMethod->dotpay_waluty);
+        return in_array($this->getCurrency($paymentMethod), $paymentMethod->dotpay_waluty);
     }
 
     private function isPluginValidated($paymentMethod){
