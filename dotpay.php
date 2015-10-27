@@ -152,7 +152,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
     /**
      *
-     * Strna thank you renderowana po powroceniu do sklepu,
+     * Strona thank you renderowana po powroceniu do sklepu,
      * w zaleznosci od statusu przekazuje odpowiednia tresc
      *
      * @param $html
@@ -224,11 +224,19 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     }
 
 
+    /**
+     * Wewnetrzna metoda walidujaca zapisanie konfiguracji w adminie
+     *
+     * @param VirtueMartCart $cart
+     * @param int $method
+     * @param array $cart_prices
+     * @return bool
+     */
     protected function checkConditions($cart, $method, $cart_prices)
     {
         $method->payment_logos = 'dp_logo_alpha_175_50.png';
         if((strlen($method->dotpay_id) < 6) || (strlen($method -> dotpay_id) > 6) ) {
-            JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay ID</>','error' );
+            JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay ID</b>','error' );
             return false;
         };
 
@@ -236,7 +244,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             JFactory::getApplication()->enqueueMessage( '<br>Error configuration Payment Methods: <b>BAD Dotpay PIN</b>','error' );
             return false;
         }
-
         return true;
     }
 
@@ -282,7 +289,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
 
     function _getTablepkeyValue($virtuemart_order_id) {
-        $a = 'a';
 		$db = JFactory::getDBO();
 		$q = 'SELECT ' . $this->_tablepkey . ' FROM `' . $this->_tablename . '` '
 			. 'WHERE `virtuemart_order_id` = ' . $virtuemart_order_id;
@@ -333,7 +339,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
 
     function getOrderMethodNamebyOrderId ($virtuemart_order_id) {
-
 	$db = JFactory::getDBO ();
 	$q = 'SELECT * FROM `' . $this->_tablename . '` '
 		. 'WHERE `virtuemart_order_id` = ' . $virtuemart_order_id.  ' ORDER BY id DESC LIMIT 1 ';
@@ -417,6 +422,15 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $this->getTablePluginParams($psType, $name, $id, $xParams, $varsToPush);
     }
 
+    /**
+     * ustawia nowy status w zamowieniu
+     *
+     * @param $order_id
+     * @param $status
+     * @param string $note
+     * @param int $notified
+     * @return string
+     */
     private function newStatus($order_id, $status, $note = "",  $notified = 1)
     {
         if (!class_exists('VirtueMartModelOrders')){
@@ -451,16 +465,37 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return 'PLG_DOTPAY_STATUS_CHANGE';
     }
 
+    /**
+     * Sprawdza czy waluta  z notyfikacji dotpaya zgadza sie z ta z
+     * orderu
+     *
+     * @param $post
+     * @param $paymentModel
+     * @return bool
+     */
     private function isCurrencyMatch($post, $paymentModel)
     {
         return $paymentModel->waluta_zamowienia == $post->get('operation_original_currency');
     }
 
+    /**
+     *
+     * Sprawdza czy cena z notyfikacji z dotpaya zgadza sie z cena z orderu
+     * @param $post
+     * @param $paymentModel
+     * @return bool
+     */
     private function isPriceMatch($post, $paymentModel)
     {
         return $paymentModel->kwota_zamowienia == $post->get('operation_original_amount');
     }
 
+    /**
+     * Zwraca obiekt za platnosci
+     *
+     * @param $orderId
+     * @return mixed
+     */
     private function getPaymentModel($orderId)
     {
         $db = JFactory::getDBO();
@@ -469,9 +504,15 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $db->loadObject();
     }
 
+    /**
+     * Sprawdza czy sygnatura jest zwalidowana
+     *
+     * @param $post
+     * @param $paymentMethod
+     * @return bool
+     */
     private function isSingnatureValidated($post, $paymentMethod)
     {
-
         $string = $paymentMethod->dotpay_pin .
             $post->get('id', '', 'STRING') .
             $post->get('operation_number', '', 'STRING') .
@@ -500,6 +541,12 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         }
     }
 
+    /**
+     * Sprawdza czy ip jest z dotpaya
+     *
+     * @param $paymentMethod
+     * @return bool
+     */
     private function isIpValidated($paymentMethod)
     {
         if($_SERVER['REMOTE_ADDR'] == self::DOTPAY_IP){
@@ -510,6 +557,11 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         }
     }
 
+    /**
+     * zapisuje order na podstawie danych z arraya
+     *
+     * @param $orderData
+     */
     private function saveOrder($orderData){
         $dataToSave = array(
             'order_number'                  => $orderData['order_number'],
@@ -524,22 +576,47 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         $this->storePSPluginInternalData($dataToSave);
     }
 
+    /**
+     * Zwraca aktualny jezyk joomli
+     *
+     * @return string
+     */
     private function getLang()
     {
         $lang = JFactory::getLanguage();
         return  substr($lang->getTag(),0,2);
     }
 
+    /**
+     * Zwraca adres url dla strony thank you
+     *
+     * @param $orderDetails
+     * @return string
+     */
     private function getUrl($orderDetails)
     {
         return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginresponsereceived&pm='.$orderDetails->virtuemart_paymentmethod_id;
     }
 
+    /**
+     * Zwraca adres url dla notyfikacji z dotpay
+     *
+     * @param $orderDetails
+     * @return string
+     */
     private function getUrlc($orderDetails)
     {
         return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginnotification&tmpl=component&pm='.$orderDetails->virtuemart_paymentmethod_id;
     }
 
+
+    /**
+     * Renderuje formularz ktory bedzie wyslany do dotpaya
+     *
+     * @param $paymentMethod
+     * @param $orderData
+     * @return string
+     */
     private function prepareHtmlForm( $paymentMethod, $orderData)
     {
         $html = '
@@ -551,6 +628,13 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $html;
     }
 
+
+    /**
+     * Na podstawie przygotowanego arraya beda renderowane inputy do formularza
+     *
+     * @param $orderData
+     * @return string
+     */
     private function getHtmlInputs($orderData)
     {
         $data = array(
@@ -580,6 +664,13 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $html;
     }
 
+
+    /**
+     * Renderuje koncowke formularza i skrypt ktory wywola
+     * redirect do strony platnosci
+     *
+     * @return string
+     */
     private function getHtmlFormEnd()
     {
         $src = JURI::root().'media/images/stories/virtuemart/payment/'.'dp_logo_alpha_175_50.png';
@@ -597,6 +688,12 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $html;
     }
 
+    /**
+     * Wybiera url do dotpaya w zaleznosci od konta testowego
+     *
+     * @param $paymentMethod
+     * @return string
+     */
     private function getDotpayUrl($paymentMethod)
     {
         if ($paymentMethod->fake_real === '1') {
@@ -605,6 +702,12 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return 'https://ssl.dotpay.pl/';
     }
 
+    /**
+     * Zwraca kod panstwa
+     *
+     * @param $orderDetails
+     * @return mixed
+     */
     private function getCountryCode($orderDetails){
         $q = 'SELECT country_3_code FROM #__virtuemart_countries WHERE virtuemart_country_id='. $orderDetails->virtuemart_country_id.' ';
         $db = JFactory::getDBO();
@@ -612,11 +715,24 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $db->loadResult();
     }
 
+    /**
+     * Sprawdza czy waluta jest dostepna
+     *
+     * @param $paymentMethod
+     * @return bool
+     */
     private function isCurrencyAvailable($paymentMethod)
     {
         return in_array($this->getCurrency($paymentMethod), $paymentMethod->dotpay_waluty);
     }
 
+    /**
+     * Metoda skopiowana z innych pluginow ktora testuje czy
+     * odpowiednia metoda platnosci zostala wywolana
+     *
+     * @param $paymentMethod
+     * @return bool
+     */
     private function isPluginValidated($paymentMethod){
         if (!$paymentMethod){
             return false; // Inna metoda została wybrana, nie rób nic.
@@ -632,6 +748,12 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return true;
     }
 
+    /**
+     * Zwraca walute zamowienia
+     *
+     * @param $paymentMethod
+     * @return mixed
+     */
     private function getCurrency($paymentMethod)
     {
         $paymentMethod->payment_currency;
