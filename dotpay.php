@@ -31,8 +31,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         $this->_tablepkey = 'id'; //VM3_dotpay_id';
         $this->_tableId = 'id';   //VM3_dotpay_id';
 		$varsToPush = $this->getVarsToPush();
-        $dotpay_element_vars = array("", "char");
-        $varsToPush["payment_logos"] = $dotpay_element_vars;
+        $varsToPush["payment_logos"] = array("", "char");
         $this->setConfigParameterable($this->_configTableFieldName, $varsToPush);
 	}
 
@@ -353,48 +352,10 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		return $pluginInfo->$idName;
 	}
 
-    function onShowOrderFE($virtuemart_order_id, $virtuemart_method_id, &$method_info)
-	 {
-	 	if (!($this->selectedThisByMethodId($virtuemart_method_id))) {
-			return null;
-		}
+    public function plgVmOnShowOrderFEPayment ($virtuemart_order_id, $virtuemart_paymentmethod_id, &$payment_name) {
 
-		// ograniczenie generowania się dodatkowego formularza, jeśli klient nie opłacił jeszcze zamówienia, tylko do szczegółów produktu
-
-		if(isset($_REQUEST['view']) && $_REQUEST['view']=='orders' && isset($_REQUEST['layout']) && $_REQUEST['layout']=='details')
-		{
-			// wywołaj cały formularz
-			if (!class_exists('VirtueMartModelOrders'))
-		{
-				require( JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php' );
-			}
-		if (!class_exists('VirtueMartCart'))
-			{
-				require(JPATH_VM_SITE . DS . 'helpers' . DS . 'cart.php');
-			}
-			if (!class_exists('CurrencyDisplay'))
-			{
-				require(JPATH_VM_ADMINISTRATOR . DS . 'helpers' . DS . 'currencydisplay.php');
-			}
-        		$modelOrder = new VirtueMartModelOrders();
-			$cart = VirtueMartCart::getCart();
-			$order = $modelOrder->getOrder($virtuemart_order_id);
-
-
- 		if (!($html = $this->plgVmConfirmDotpay($cart, $order, false ,"POST")) || $order['details']['BT']->order_status=='C' || $order['details']['BT']->order_status=='U' )
-			{
-				$method_info = $this->getOrderMethodNamebyOrderId($virtuemart_order_id);
-			}
-			else
- 		{
-				$method_info = $html;
-			}
-		}
-		else
-		{
-			$method_info = 'Dotpay';
-        	}
-	 }
+        $this->onShowOrderFE ($virtuemart_order_id, $virtuemart_paymentmethod_id, $payment_name);
+    }
 
     function plgVmOnStoreInstallPaymentPluginTable($jplugin_id)
 	{
@@ -409,15 +370,35 @@ class plgVmPaymentDotpay extends vmPSPlugin {
        $data->payment_params .= 'payment_logos="dp_logo_alpha_175_50.png"|payment_image="dp_logo_alpha_175_50.png"';
        return $this->declarePluginParams('payment', $data);
 	}
-        
-    public function plgVmDisplayListFEPayment(VirtueMartCart $cart, $selected = 0, &$htmlIn){
+
+    /**
+     * triggerowane kiedy wyswietlany jest koszyk.
+     * Decyduje czy wyswietlac dana platnosc
+     * zwraca true/false
+     *
+     * @param VirtueMartCart $cart
+     * @param int $selected
+     * @param $htmlIn
+     * @return bool
+     */
+    public function plgVmDisplayListFEPayment(VirtueMartCart $cart, $selected = 0, &$htmlIn)
+    {
        return $this->displayListFE($cart, $selected, $htmlIn);
     }
-        
+
+    /**
+     *
+     * Wywolywana w momencie zaznaczenia platnosci jako listy na radioinputach
+     *
+     * @param VirtueMartCart $cart
+     * @param array $cart_prices
+     * @param $cart_prices_name
+     * @return bool|null
+     */
     public function plgVmonSelectedCalculatePricePayment(VirtueMartCart $cart, array &$cart_prices, &$cart_prices_name)	{
 		return $this->onSelectedCalculatePrice($cart, $cart_prices, $cart_prices_name);
     }
-        
+
     function plgVmGetTablePluginParams($psType, $name, $id, &$xParams, &$varsToPush){
         return $this->getTablePluginParams($psType, $name, $id, $xParams, $varsToPush);
     }
