@@ -109,11 +109,16 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      */
     public function plgVmConfirmedOrder($cart, $order)
 	{
+
         $paymentMethod = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id);
         if(!$this->isPluginValidated($paymentMethod)){
+
             return false;
         }
         if(!$this->isCurrencyAvailable($paymentMethod)){
+            $html =  '<p style="color:red">'.JText::_('PLG_DOTPAY_WRONG_CURRENCY').'</p>';
+            vRequest::setVar('html', $html);
+            vRequest::setVar('display_title', false);
             return false;
         }
 
