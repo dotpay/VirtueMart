@@ -21,8 +21,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
     const DOTPAY_IP = '195.150.9.37';
 
-    public static $_this = false;
-
     public function __construct(&$subject, $config)
 	{
 		parent::__construct($subject, $config);
@@ -55,11 +53,11 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 	{
 		return array(
 			'id' => ' int(11) UNSIGNED NOT NULL AUTO_INCREMENT ',
-			'virtuemart_order_id' => ' int(11) UNSIGNED DEFAULT NULL',
-			'order_number' => ' char(32) DEFAULT NULL',
-			'virtuemart_paymentmethod_id' => ' mediumint(1) UNSIGNED DEFAULT NULL',
+			'virtuemart_order_id' => 'int(1) UNSIGNED',
+			'order_number' => 'char(64)',
+			'virtuemart_paymentmethod_id' => 'mediumint(1) UNSIGNED',
 			'payment_name' => 'char(255) NOT NULL DEFAULT \'\' ',
-			'tax_id' => 'int(11) DEFAULT NULL',
+			'tax_id' => 'smallint(1)',
 			'dotpay_control' => 'varchar(32) ',
             'kwota_zamowienia' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
             'waluta_zamowienia' => 'varchar(32) ',
@@ -286,21 +284,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return true;
     }
 
-
-    function _getTablepkeyValue($virtuemart_order_id) {
-		$db = JFactory::getDBO();
-		$q = 'SELECT ' . $this->_tablepkey . ' FROM `' . $this->_tablename . '` '
-			. 'WHERE `virtuemart_order_id` = ' . $virtuemart_order_id;
-		$db->setQuery($q);
-
-		if (!($pkey = $db->loadResult())) {
-			JError::raiseWarning(500, $db->getErrorMsg());
-			return '';
-		}
-		return $pkey;
-    }
-
-
     function plgVmOnShowOrderBEPayment($virtuemart_order_id, $virtuemart_payment_id)
 	{
 		if (!$this->selectedThisByMethodId($virtuemart_payment_id)) {
@@ -336,28 +319,26 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             0.01));
     }
 
-
-    function getOrderMethodNamebyOrderId ($virtuemart_order_id) {
-	$db = JFactory::getDBO ();
-	$q = 'SELECT * FROM `' . $this->_tablename . '` '
-		. 'WHERE `virtuemart_order_id` = ' . $virtuemart_order_id.  ' ORDER BY id DESC LIMIT 1 ';
-	$db->setQuery ($q);
-	if (!($pluginInfo = $db->loadObject ())) {
-		vmWarn ('Attention, ' . $this->_tablename . ' has not any entry for the order ' . $db->getErrorMsg ());
-		return NULL;
-	}
-
-        $idName = $this->_psType . '_name';
-
-		return $pluginInfo->$idName;
-	}
-
+    /**
+     * Wywolywane przy ogladaniu zamowienia na froncie,
+     * zwraca nazwe platnosci
+     *
+     * @param $virtuemart_order_id
+     * @param $virtuemart_paymentmethod_id
+     * @param $payment_name
+     */
     public function plgVmOnShowOrderFEPayment ($virtuemart_order_id, $virtuemart_paymentmethod_id, &$payment_name) {
 
         $this->onShowOrderFE ($virtuemart_order_id, $virtuemart_paymentmethod_id, $payment_name);
     }
 
-    function plgVmOnStoreInstallPaymentPluginTable($jplugin_id)
+    /**
+     * Metoda wywolywana przy kazdej zmiani konfiguracji
+     *
+     * @param $jplugin_id
+     * @return bool|mixed
+     */
+    public function plgVmOnStoreInstallPaymentPluginTable($jplugin_id)
 	{
 	    return $this->onStoreInstallPluginTable($jplugin_id);
     }
@@ -399,9 +380,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		return $this->onSelectedCalculatePrice($cart, $cart_prices, $cart_prices_name);
     }
 
-    function plgVmGetTablePluginParams($psType, $name, $id, &$xParams, &$varsToPush){
-        return $this->getTablePluginParams($psType, $name, $id, $xParams, $varsToPush);
-    }
 
     /**
      * ustawia nowy status w zamowieniu
