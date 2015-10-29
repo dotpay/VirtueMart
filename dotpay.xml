@@ -1,20 +1,19 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <extension version="2.5" type="plugin" group="vmpayment" method="upgrade">
 	<name>VM Payment - Dotpay</name>
-	<creationDate>24.08.2015</creationDate>
+	<creationDate>29.10.2015</creationDate>
 	<author>Dotpay SA</author>
 	<copyright>Copyright (C) 2015 Dotpay SA. All rights reserved.</copyright>
 	<license>GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html</license>
 	<authorEmail>tech@dotpay.pl</authorEmail>
 	<authorUrl>http://www.dotpay.pl</authorUrl>
-	<version>1.0.1</version>
+	<version>1.1</version>
 	<description>PLG_DOTPAY_CONF_DESCRIPTION</description>
 
 	
 <files>
 	<filename plugin="dotpay">dotpay.php</filename>
         <filename>fields/dotpaylogo.php</filename>
-        <filename>fields/getdotpayurlc.php</filename>
         <folder>fields</folder>
 		<folder>language</folder>
 </files>
