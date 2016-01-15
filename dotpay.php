@@ -336,6 +336,12 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
         $this->onShowOrderFE ($virtuemart_order_id, $virtuemart_paymentmethod_id, $payment_name);
     }
+    
+    // Checks how many plugins are available. If only one, the user will not have the choice. Enter edit_xxx page
+	// The plugin must check first if it is the correct type
+	function plgVmOnCheckAutomaticSelectedPayment(VirtueMartCart $cart, array $cart_prices = array(), &$paymentCounter) {
+		return $this->onCheckAutomaticSelected($cart, $cart_prices, $paymentCounter);
+	}
 
     /**
      * Metoda wywolywana przy kazdej zmiani konfiguracji
