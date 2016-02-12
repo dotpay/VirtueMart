@@ -3,7 +3,7 @@ VirtueMart Dotpay payment module
 
 ####Wtyczka dla VirtueMart dodająca bramkę płatności Dotpay####
 
-Najnowsza wersja modułu oraz instruckji instalacji:
+Najnowsza wersja modułu oraz instrukcji instalacji:
 https://github.com/dotpay/VirtueMart/releases/latest
 
 ---------------------------------------
