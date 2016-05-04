@@ -1,9 +1,9 @@
 <?php
 /**
  * @package Dotpay Payment Plugin module for VirtueMart v3 for Joomla! 3.4
- * @version $1.1: dotpay.php 2015-10-29
+ * @version $1.0.3: dotpay.php 2016-05-04
  * @author Dotpay SA  < tech@dotpay.pl >
- * @copyright (C) 2015 - Dotpay SA
+ * @copyright (C) 2016 - Dotpay SA
  * @license GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
 **/
 
