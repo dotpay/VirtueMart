@@ -19,9 +19,8 @@ class JFormFieldDotpayLogo extends JFormField {
 	 * @var        string
 	 */
 	var $type = 'DotpayLogo';
-
 	function getInput() {
-        $src = JURI::root() . "media/images/stories/virtuemart/payment/dp_logo_alpha_175_50.png";
+        $src = JURI::root() . "media/images/stories/virtuemart/payment/"."dp_logo_alpha_175_50.png";
 		$register_link_dotpay = '<br /><br /><p><a href="https://ssl.dotpay.pl/s2/login/registration/?affilate_id=virtuemart" target="_blank" class="btn btn-primary " title="Account registration in dotpay.pl">Zarejestruj konto w dotpay.pl</a>';
         return "<a href='http://www.dotpay.pl' target='_blank'><img src=$src /></a> $register_link_dotpay <script type='text/javascript'>jQuery(document).ready(function() {jQuery('#params_dotpay_urlc_info-lbl').parents().css('width', 'auto')});</script>";
 	}

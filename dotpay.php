@@ -647,8 +647,9 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
         $html = '<br /><b>Opłać zamównienie poprzez Dotpay:<b> <br /><br />';
         $html .='<input name="submit_send" value="" type="submit" style="border: 0; background: url(\''.$src.'\') no-repeat; width: 200px; height: 100px;padding-top:10px" /> <br /><br /><br />';
-        $html .='</div>';
         $html .='</form>';
+        $html .='</div>';
+
 
         $html .= '<script type="text/javascript">';
         $html .=    'jQuery.noConflict();';
