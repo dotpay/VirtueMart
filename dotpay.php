@@ -1,9 +1,9 @@
 <?php
 /**
  * @package Dotpay Payment Plugin module for VirtueMart v3 for Joomla! 3.4
- * @version $1.0.3: dotpay.php 2016-05-04
+ * @version $1.0.4: dotpay.php 2018-03-23
  * @author Dotpay SA  < tech@dotpay.pl >
- * @copyright (C) 2016 - Dotpay SA
+ * @copyright (C) 2018 - Dotpay sp. z o.o.
  * @license GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
 **/
 
@@ -43,6 +43,42 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $this->createTableSQL('Payment Dotpay Table');
     }
 
+	
+  static function getPaymentCurrency (&$paymentMethod, $selectedUserCurrency = false) {
+
+		if (empty($paymentMethod->payment_currency)) {
+			$vendor_model = VmModel::getModel('vendor');
+			$vendor = $vendor_model->getVendor($paymentMethod->virtuemart_vendor_id);
+			$paymentMethod->payment_currency = $vendor->vendor_currency;
+			return $paymentMethod->payment_currency;
+		} else {
+
+			$vendor_model = VmModel::getModel( 'vendor' );
+			$vendor_currencies = $vendor_model->getVendorAndAcceptedCurrencies( $paymentMethod->virtuemart_vendor_id );
+
+			if(!$selectedUserCurrency) {
+				if($paymentMethod->payment_currency == -1) {
+					$mainframe = JFactory::getApplication();
+					$selectedUserCurrency = $mainframe->getUserStateFromRequest( "virtuemart_currency_id", 'virtuemart_currency_id', vRequest::getInt( 'virtuemart_currency_id', $vendor_currencies['vendor_currency'] ) );
+				} else {
+					$selectedUserCurrency = $paymentMethod->payment_currency;
+				}
+			}
+
+			$vendor_currencies['all_currencies'] = explode(',', $vendor_currencies['all_currencies']);
+			if(in_array($selectedUserCurrency,$vendor_currencies['all_currencies'])){
+				$paymentMethod->payment_currency = $selectedUserCurrency;
+			} else {
+				$paymentMethod->payment_currency = $vendor_currencies['vendor_currency'];
+			}
+
+			return $paymentMethod->payment_currency;
+		}
+
+	}
+	
+	
+	
     /**
      * Metoda wywolywana przy instalacji pluginu
      * definiowane sa w niej pola w nowej tabeli
@@ -59,13 +95,12 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 			'payment_name' => 'char(255) NOT NULL DEFAULT \'\' ',
 			'tax_id' => 'smallint(1)',
 			'dotpay_control' => 'varchar(32) ',
-            'kwota_zamowienia' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
-            'waluta_zamowienia' => 'varchar(32) ',
-            'kwota_platnosci' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
-            'waluta_platnosci' => 'varchar(32) '
+            'payment_order_total' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
+			'payment_currency'  => 'char(3)'
 		);
     }
 
+		
     /**
      * Zwraca dane do formularza ktory przesyla je pozniej do dotpay
      *
@@ -76,18 +111,33 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     private function getOrderData( $paymentMethod, $order)
     {
         $orderDetails = $order['details']['BT'];
+		
+		$this->getPaymentCurrency($paymentMethod, $order['details']['BT']->payment_currency_id);
+
+		$q = 'SELECT `currency_code_3` FROM `#__virtuemart_currencies` WHERE `virtuemart_currency_id`="' .$paymentMethod->payment_currency . '" ';
+		$db = JFactory::getDBO ();
+		$db->setQuery ($q);
+		$currency_code_3 = $db->loadResult ();
+		
+		
+		if (!class_exists ('VirtueMartModelCurrency')) {
+			require(VMPATH_ADMIN . DS . 'models' . DS . 'currency.php');
+		}
+		$currency = CurrencyDisplay::getInstance ('', $order['details']['BT']->virtuemart_vendor_id);
+		
+		$totalInPaymentCurrency = vmPSPlugin::getAmountInCurrency($order['details']['BT']->order_total,$paymentMethod->payment_currency);
         return array(
             'order_number'                  => $orderDetails->order_number,
             'payment_name'                  => $this->renderPluginName($paymentMethod, $order),
             'virtuemart_paymentmethod_id'   => $orderDetails->virtuemart_paymentmethod_id,
             'tax_id'                        => $paymentMethod->tax_id,
             'dotpay_control'                => $orderDetails->order_number,
-            'amount'                        => number_format($orderDetails->order_total,2,".",""),
-            'currency'                      => $this->getCurrency($paymentMethod),
+            'amount'                        => $totalInPaymentCurrency['value'],
+            'currency'                      => $currency_code_3,
             'url'                           => $this->getUrl($orderDetails),
             'urlc'                          => $this->getUrlc($orderDetails),
             'dotpay_id'                     => $paymentMethod->dotpay_id,
-            'description'                   => 'Zamówienie nr '.$orderDetails->order_number,
+            'description'                   => 'Zamowienie nr '.$orderDetails->order_number,
             'lang'                          => $this->getLang(),
             'first_name'                    => $orderDetails->first_name,
             'last_name'                     => $orderDetails->last_name,
@@ -107,20 +157,27 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      * @param $order
      * @return bool
      */
-    public function plgVmConfirmedOrder($cart, $order)
+
+
+   public function plgVmConfirmedOrder($cart, $order)
 	{
 
-        $paymentMethod = $this->getVmPluginMethod($order['details']['BT']->virtuemart_paymentmethod_id);
-        if(!$this->isPluginValidated($paymentMethod)){
+		if (!($paymentMethod = $this->getVmPluginMethod ($order['details']['BT']->virtuemart_paymentmethod_id))) {
+			return NULL; // Another method was selected, do nothing
+		}
+		if (!$this->selectedThisElement ($paymentMethod->payment_element)) {
+			return FALSE;
+		}
+		
+		if (method_exists('vmLanguage', 'loadJLang')) {
+		 	vmLanguage::loadJLang('com_virtuemart',true);
+			vmLanguage::loadJLang('com_virtuemart_orders', TRUE);
+		}
 
-            return false;
-        }
-        if(!$this->isCurrencyAvailable($paymentMethod)){
-            $html =  '<p style="color:red">'.JText::_('PLG_DOTPAY_WRONG_CURRENCY').'</p>';
-            vRequest::setVar('html', $html);
-            vRequest::setVar('display_title', false);
-            return false;
-        }
+
+		if (!class_exists ('VirtueMartModelOrders')) {
+			require(VMPATH_ADMIN . DS . 'models' . DS . 'orders.php');
+		}
 
         $orderData  = $this->getOrderData($paymentMethod, $order);
         $this->saveOrder($orderData);
@@ -131,6 +188,78 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 		$this->processConfirmedOrderPaymentResponse(1, $cart, $order, $html, $paymentName, $status);
 	}
 
+//NEW
+function plgVmConfirmedOrder2 ($cart, $order) {
+
+		if (!($paymentMethod = $this->getVmPluginMethod ($order['details']['BT']->virtuemart_paymentmethod_id))) {
+			return NULL; // Another method was selected, do nothing
+		}
+		if (!$this->selectedThisElement ($paymentMethod->payment_element)) {
+			return FALSE;
+		}
+
+		vmLanguage::loadJLang('com_virtuemart',true);
+		vmLanguage::loadJLang('com_virtuemart_orders', TRUE);
+
+		if (!class_exists ('VirtueMartModelOrders')) {
+			require(VMPATH_ADMIN . DS . 'models' . DS . 'orders.php');
+		}
+
+
+		
+
+		$orderData  = $this->getOrderData($paymentMethod, $order);
+        $this->saveOrder($orderData);
+
+		$paymentName = $this->renderPluginName($paymentMethod);
+        $html = $this->prepareHtmlForm( $paymentMethod, $orderData);
+        $status = $paymentMethod->status_pending;
+		$this->processConfirmedOrderPaymentResponse(1, $cart, $order, $html, $paymentName, $status);
+		
+		
+	
+/*
+	
+		$totalInPaymentCurrency = vmPSPlugin::getAmountInCurrency($order['details']['BT']->order_total,$paymentMethod->payment_currency);
+
+		$dbValues['payment_name'] = $this->renderPluginName($paymentMethod);
+		$dbValues['order_number'] = $order['details']['BT']->order_number;
+		$dbValues['virtuemart_paymentmethod_id'] = $order['details']['BT']->virtuemart_paymentmethod_id;
+		$dbValues['payment_currency'] = $currency_code_3;
+		$dbValues['email_currency'] = $email_currency;
+		$dbValues['payment_order_total'] = $totalInPaymentCurrency['value'];
+		// $dbValues['tax_id'] = $paymentMethod->tax_id;
+		$this->storePSPluginInternalData ($dbValues);
+
+		if (!class_exists ('VirtueMartModelCurrency')) {
+			require(VMPATH_ADMIN . DS . 'models' . DS . 'currency.php');
+		}
+		$currency = CurrencyDisplay::getInstance ('', $order['details']['BT']->virtuemart_vendor_id);
+
+		$html = $this->renderByLayout('post_payment', array(
+			'order_number' =>$order['details']['BT']->order_number,
+			'order_pass' =>$order['details']['BT']->order_pass,
+			'payment_name' => $dbValues['payment_name'],
+			'displayTotalInPaymentCurrency' => $totalInPaymentCurrency['display'],
+			'order_user_id' => $order['details']['BT']->virtuemart_user_id
+		));
+		$modelOrder = VmModel::getModel ('orders');
+		// $order['order_status'] = $this->getNewStatus ($paymentMethod);
+		$order['customer_notified'] = 1;
+		$order['comments'] = '';
+		$modelOrder->updateStatusForOneOrder ($order['details']['BT']->virtuemart_order_id, $order, TRUE);
+
+		//We delete the old stuff
+		$cart->emptyCart ();
+		vRequest::setVar ('html', $html);
+		return TRUE;
+		
+	*/	
+		
+	}
+	
+	
+
 
     /**
      *
@@ -140,17 +269,20 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      * @param $paymentCurrencyId
      * @return null
      */
-    public function plgVmgetPaymentCurrency($virtuemart_paymentmethod_id, &$paymentCurrencyId)
-	{
-        $paymentMethod = $this->getVmPluginMethod($virtuemart_paymentmethod_id);
+   	function plgVmgetPaymentCurrency ($virtuemart_paymentmethod_id, &$paymentCurrencyId) {
 
-        if(!$this->isPluginValidated($paymentMethod)){
-            return null;
-        }
-		$this->getPaymentCurrency($paymentMethod);
+		if (!($paymentMethod = $this->getVmPluginMethod ($virtuemart_paymentmethod_id))) {
+			return NULL; // Another method was selected, do nothing
+		}
+		if (!$this->selectedThisElement ($paymentMethod->payment_element)) {
+			return FALSE;
+		}
+		$this->getPaymentCurrency ($paymentMethod);
+
 		$paymentCurrencyId = $paymentMethod->payment_currency;
-   }
-
+		return;
+	}
+   
 
     /**
      *
@@ -289,30 +421,30 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return true;
     }
 
-    function plgVmOnShowOrderBEPayment($virtuemart_order_id, $virtuemart_payment_id)
-	{
-		if (!$this->selectedThisByMethodId($virtuemart_payment_id)) {
-			return null; // Another method was selected, do nothing
+	
+ function plgVmOnShowOrderBEPayment ($virtuemart_order_id, $virtuemart_payment_id) {
+
+		if (!$this->selectedThisByMethodId ($virtuemart_payment_id)) {
+			return NULL; // Another method was selected, do nothing
 		}
 
-		$db = JFactory::getDBO();
-		$q = 'SELECT * FROM `' . $this->_tablename . '` '
-			. 'WHERE `virtuemart_order_id` = ' . $virtuemart_order_id;
-		$db->setQuery($q);
-		if (!($paymentTable = $db->loadObject())) {
-			vmWarn(500, $q . " " . $db->getErrorMsg());
-			return '';
+		if (!($paymentTable = $this->getDataByOrderId ($virtuemart_order_id))) {
+			return NULL;
 		}
-		$this->getPaymentCurrency($paymentTable);
+		if (method_exists('vmLanguage', 'loadJLang')) {
+		 	vmLanguage::loadJLang('com_virtuemart');
+		}
 
-           	$html = '<table class="adminlist">' . "\n";
-		$html .=$this->getHtmlHeaderBE();
-		$html .= $this->getHtmlRowBE('STANDARD_PAYMENT_NAME', $paymentTable->payment_name);
-		$html .= $this->getHtmlRowBE('STANDARD_PAYMENT_TOTAL_CURRENCY', number_format($paymentTable->kwota_platnosci,2,".","").' '.$paymentTable->waluta_platnosci);
+
+		$html = '<table class="adminlist table">' . "\n";
+		$html .= $this->getHtmlHeaderBE ();
+		$html .= $this->getHtmlRowBE ('COM_VIRTUEMART_PAYMENT_NAME', $paymentTable->payment_name);
+		$html .= $this->getHtmlRowBE ('STANDARD_PAYMENT_TOTAL_CURRENCY', $paymentTable->payment_order_total . ' ' . $paymentTable->payment_currency);
 		$html .= '</table>' . "\n";
 		return $html;
-    }
-
+	}
+	
+	
 
     function getCosts(VirtueMartCart $cart, $method, $cart_prices) {
         if (preg_match('/%$/', $method->cost_percent_total)) {
@@ -445,7 +577,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      */
     private function isCurrencyMatch($post, $paymentModel)
     {
-        return $paymentModel->waluta_zamowienia == $post->get('operation_original_currency');
+        return $paymentModel->payment_currency == $post->get('operation_original_currency');
     }
 
     /**
@@ -457,7 +589,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      */
     private function isPriceMatch($post, $paymentModel)
     {
-        return $paymentModel->kwota_zamowienia == $post->get('operation_original_amount');
+        return $paymentModel->payment_order_total == $post->get('operation_original_amount');
     }
 
     /**
@@ -539,8 +671,8 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             'virtuemart_paymentmethod_id'   => $orderData['virtuemart_paymentmethod_id'],
             'tax_id'                        => $orderData['tax_id'],
             'dotpay_control'                => $orderData['dotpay_control'],
-            'kwota_zamowienia'              => $orderData['amount'],
-            'waluta_zamowienia'             => $orderData['currency'],
+            'payment_order_total'              => $orderData['amount'],
+            'payment_currency'             => $orderData['currency'],
         );
 
         $this->storePSPluginInternalData($dataToSave);
@@ -591,7 +723,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     {
         $html = '
 		<div style="text-align: center; width: 100%; ">
-		<form action="'. $this->getDotpayUrl($paymentMethod) .'" method="Post" class="form" name="platnosc_dotpay" id="platnosc_dotpay">';
+		<form action="'. $this->getDotpayUrl($paymentMethod) .'" method="POST" class="form" name="platnosc_dotpay" id="platnosc_dotpay">';
         $html .= $this->getHtmlInputs($orderData);
 
         $html .= $this->getHtmlFormEnd();
@@ -687,16 +819,6 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return $db->loadResult();
     }
 
-    /**
-     * Sprawdza czy waluta jest dostepna
-     *
-     * @param $paymentMethod
-     * @return bool
-     */
-    private function isCurrencyAvailable($paymentMethod)
-    {
-        return in_array($this->getCurrency($paymentMethod), $paymentMethod->dotpay_waluty);
-    }
 
     /**
      * Metoda skopiowana z innych pluginow ktora testuje czy
@@ -713,12 +835,10 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         if (!$this->selectedThisElement($paymentMethod->payment_element)){
             return false;
         }
-
-        if(!is_array($paymentMethod->dotpay_waluty)){
-            return false;
-        }
-        return true;
-    }
+	
+		return true;
+ 
+  }
 
     /**
      * Zwraca walute zamowienia
