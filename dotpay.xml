@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <extension version="2.5" type="plugin" group="vmpayment" method="upgrade">
 	<name>VM Payment - Dotpay</name>
-	<creationDate>23.03.2018</creationDate>
-	<author>Dotpay SA</author>
+	<creationDate>26.03.2018</creationDate>
+	<author>Dotpay sp. z o.o.</author>
 	<copyright>Copyright (C) 2018 Dotpay sp. z o.o. . All rights reserved.</copyright>
 	<license>GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html</license>
 	<authorEmail>tech@dotpay.pl</authorEmail>
 	<authorUrl>http://www.dotpay.pl</authorUrl>
-	<version>1.0.4</version>
+	<version>1.0.5</version>
 	<description>PLG_DOTPAY_CONF_DESCRIPTION</description>
 
 	
 <files>
 	<filename plugin="dotpay">dotpay.php</filename>
         <filename>fields/dotpaylogo.php</filename>
-        <folder>fields</folder>
+		<filename>dp_logo_alpha_110_47.png</filename>
+		<filename>dp_logo_alpha_175_50.png</filename>
 		<folder>language</folder>
 </files>
 
@@ -26,14 +27,12 @@
     </languages>
 
 
-<media folder="/" destination="images/stories/virtuemart/payment">
-        <filename>dp_logo_alpha_175_50.png</filename>
-</media>
-
 <vmconfig>
 	<fields name="params">
-		<fieldset name="basic" addfieldpath="/plugins/vmpayment/dotpay/fields">    
+		<fieldset name="basic" addfieldpath="/plugins/vmpayment/dotpay/fields">   
 		<field type="dotpaylogo" level="level1"/>
+		<field type="spacer" />
+		<field name="dotpay_urlc_info" type="spacer" label="PLG_DOTPAY_CONF_URLCINFO" level="level1"/>
 		<field type="spacer" name="spacer" label="PLG_DOTPAY_CONF_SETTINGS" level="level1" />
 		<field type="spacer" />
 		<field name="dotpay_id" type="text"  label="PLG_DOTPAY_CONF_ID" description="PLG_DOTPAY_CONF_ID_DESCR" />
@@ -66,9 +65,7 @@
 					<option value="1">COM_VIRTUEMART_YES</option>
 			</field>
 				
-				<field type="spacer" />
-				
-				<field name="dotpay_urlc_info" type="spacer" label="PLG_DOTPAY_CONF_URLCINFO"/>
+
 				
 		</fieldset>
 	</fields>
