@@ -1,30 +1,28 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <extension version="2.5" type="plugin" group="vmpayment" method="upgrade">
-	<name>VM Payment - Dotpay</name>
-	<creationDate>26.03.2018</creationDate>
-	<author>Dotpay sp. z o.o.</author>
-	<copyright>Copyright (C) 2018 Dotpay sp. z o.o. . All rights reserved.</copyright>
-	<license>GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html</license>
-	<authorEmail>tech@dotpay.pl</authorEmail>
-	<authorUrl>http://www.dotpay.pl</authorUrl>
-	<version>1.0.5</version>
-	<description>PLG_DOTPAY_CONF_DESCRIPTION</description>
 
-	
-<files>
-	<filename plugin="dotpay">dotpay.php</filename>
-        <filename>fields/dotpaylogo.php</filename>
-		<filename>dp_logo_alpha_110_47.png</filename>
-		<filename>dp_logo_alpha_175_50.png</filename>
-		<folder>language</folder>
-</files>
-
-    <languages folder="language">
+	<languages folder="language">
         <language tag="pl-PL">pl-PL/pl-PL.plg_vmpayment_dotpay.ini</language>
         <language tag="pl-PL">pl-PL/pl-PL.plg_vmpayment_dotpay.sys.ini</language>
         <language tag="en-GB">en-GB/en-GB.plg_vmpayment_dotpay.ini</language>
         <language tag="en-GB">en-GB/en-GB.plg_vmpayment_dotpay.sys.ini</language>
     </languages>
+	<files>
+		<filename plugin="dotpay">dotpay.php</filename>
+			<filename>fields/dotpaylogo.php</filename>
+			<filename>dp_logo_alpha_110_47.png</filename>
+			<filename>dp_logo_alpha_175_50.png</filename>
+			<folder>language</folder>
+	</files>
+	<name>VM Payment - Dotpay</name>
+	<creationDate>26.03.2021</creationDate>
+	<author>Dotpay sp. z o.o.</author>
+	<copyright>Copyright (C) 2021 Dotpay sp. z o.o. . All rights reserved.</copyright>
+	<license>GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html</license>
+	<authorEmail>tech@dotpay.pl</authorEmail>
+	<authorUrl>http://www.dotpay.pl</authorUrl>
+	<version>1.0.6</version>
+	<description>PLG_DOTPAY_CONF_DESCRIPTION</description>
 
 
 <vmconfig>
@@ -50,8 +48,9 @@
 			<field name="status_canceled" type="vmorderstate" scope="com_virtuemart" default="P" label="PLG_DOTPAY_CONF_OTHER_STATUS_FAIL" description="" />
 				
 						
-			<field name="cost_per_transaction" type="text"  label="PLG_DOTPAY_CONF_OTHER_COST" description="PLG_DOTPAY_CONF_OTHER_COST_DESCR" />
-			<field name="cost_percent_total" type="text"  label="PLG_DOTPAY_CONF_OTHER_COST_PERCENT" description="PLG_DOTPAY_CONF_OTHER_COST_PERCENT_DESCR" />
+
+			<field name="cost_per_transaction" type="text" default="0" label="PLG_DOTPAY_CONF_OTHER_COST" description="PLG_DOTPAY_CONF_OTHER_COST_DESCR" />
+			<field name="cost_percent_total" type="text" default="0" label="PLG_DOTPAY_CONF_OTHER_COST_PERCENT" description="PLG_DOTPAY_CONF_OTHER_COST_PERCENT_DESCR" />
 
 				<field name="tax_id" type="vmtaxes" scope="com_virtuemart"  label="PLG_DOTPAY_CONF_TAX" description="PLG_DOTPAY_CONF_TAX_DESCR" />
 

@@ -1,9 +1,9 @@
 <?php
 /**
  * @package Dotpay Payment Plugin module for VirtueMart v3 for Joomla! 3.4
- * @version $1.0.5: dotpay.php 2018-03-26
+ * @version $1.0.6: dotpay.php 2021-03-26
  * @author Dotpay sp. z o.o. < tech@dotpay.pl >
- * @copyright (C) 2018 - Dotpay sp. z o.o.
+ * @copyright (C) 2021 - Dotpay sp. z o.o.
  * @license GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
 **/
 
@@ -17,11 +17,17 @@ if (!class_exists('vmPSPlugin'))
 	
 class plgVmPaymentDotpay extends vmPSPlugin {
 
-    const PLG_MESSAGE_STATUS_OK = 'Płatność została potwierdzona.';
+	/** Version information */
+    const DP_RELDATE = '2021-03-26';
+    const DOTPAY_MODULE_VERSION = '1.0.6';
 
-    const PLG_MESSAGE_STATUS_FAIL = 'Płatność nie została dokonana.';
 
+
+	/** Dotpay IP allowed */    
     const DOTPAY_IP = '195.150.9.37';
+    const DP_SUPPORT_IP = '77.79.195.34';
+
+
 
     public function __construct(&$subject, $config)
 	{
@@ -94,7 +100,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 			'virtuemart_order_id' => 'int(1) UNSIGNED',
 			'order_number' => 'char(64)',
 			'virtuemart_paymentmethod_id' => 'mediumint(1) UNSIGNED',
-			'payment_name' => 'char(255) NOT NULL DEFAULT \'\' ',
+			'payment_name' => 'VARCHAR(500) NOT NULL DEFAULT \'\' ',
 			'tax_id' => 'smallint(1)',
 			'dotpay_control' => 'varchar(32) ',
             'payment_order_total' => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\' ',
@@ -155,14 +161,17 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             'url'                           => $this->getUrl($orderDetails),
             'urlc'                          => $this->getUrlc($orderDetails),
             'dotpay_id'                     => $paymentMethod->dotpay_id,
-            'description'                   => 'Zamowienie nr '.$orderDetails->order_number,
+            'description'                   => vmText::_('PLG_DOTPAY_ORDER_TITLE').' '.$orderDetails->order_number,
             'lang'                          => $this->getLang(),
             'first_name'                    => $orderDetails->first_name,
             'last_name'                     => $orderDetails->last_name,
             'email'                         => $orderDetails->email,
             'city'                          => $orderDetails->city,
+            'address_1'                     => $orderDetails->address_1,
+            'address_2'                     => $orderDetails->address_2,
             'postcode'                      => $orderDetails->zip,
-            'phone'                         => $orderDetails->phone_1,
+            'phone_1'                       => $orderDetails->phone_1,
+            'phone_2'                       => $orderDetails->phone_2,
             'country'                       => $this->getCountryCode($orderDetails),
         );
     }
@@ -204,7 +213,21 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         $html = $this->prepareHtmlForm( $paymentMethod, $orderData);
         $status = $paymentMethod->status_pending;
 		$this->processConfirmedOrderPaymentResponse(1, $cart, $order, $html, $paymentName, $status);
-	}
+
+
+        $modelOrder = VmModel::getModel ('orders');
+
+        $order['customer_notified'] = 1;
+        $order['comments'] = vmText::_('PLG_DOTPAY_ORDER_COMMENT');
+        $modelOrder->updateStatusForOneOrder ($order['details']['BT']->virtuemart_order_id, $order, TRUE);
+        //We delete the old stuff
+        $cart->emptyCart();
+        vRequest::setVar ('html', $html);
+        return true;
+
+
+}
+
 
 
     /**
@@ -238,69 +261,403 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      * @param $html
      * @return bool
      */
+
     public function plgVmOnPaymentResponseReceived(&$html)
     {
-        $jinput = JFactory::getApplication()->input;
-        $paymentMethod = $this->getVmPluginMethod($jinput->get->get('pm', 0));
 
-        if(!$this->isPluginValidated($paymentMethod)){
-            return false;
-        }
+        $this->loadVmClass('VirtueMartCart', JPATH_VM_SITE . DS . 'helpers' . DS . 'cart.php');
 
-        if($jinput->post->get('status') == "OK"){
-            JFactory::getApplication()->enqueueMessage( '<br><b>Płatność przebiegła pomyślnie !</b><br>Dziękujemy za dokonanie transakcji za pośrednictwem Dotpay.','message' );
-            return true;
-        }
+		if(!class_exists('shopFunctionsF')) {
+			require(JPATH_VM_SITE . DS . 'helpers' . DS . 'shopfunctionsf.php');
+		}
+		$this->loadVmClass('VirtueMartModelOrders', JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders.php');
 
-        JFactory::getApplication()->enqueueMessage( '<br><b>Płatność nie doszła do skutku !</b><br>Transakcja za pośrednictwem Dotpay nie została przeprowadzona poprawnie.<br>Jeżeli doszło do obciążenia Twojego rachunku bankowego, prosimy o zgłoszenie tego faktu do właściciela sklepu z podaniem numeru zamównienia oraz transakcji.','error' );
-        return true;
+
+		vmLanguage::loadJLang('com_virtuemart_orders', TRUE);
+
+		$virtuemart_paymentmethod_id = vRequest::getInt('pm', 0);
+
+		if(!($this->_currentMethod = $this->getVmPluginMethod($virtuemart_paymentmethod_id))) {
+			return NULL; // Another method was selected, do nothing
+		}
+		if(!$this->selectedThisElement($this->_currentMethod->payment_element)) {
+			return NULL;
+		}
+
+
+            $jinput = JFactory::getApplication()->input;
+            $DP_post_array = $jinput->getArray($_POST);
+            $oid = JFactory::getApplication()->input->getString('oid');
+
+                if(preg_match('/^[A-Za-z0-9 _-]+$/',($oid))){
+                    $NR_zam = $oid ; 
+                }else{ 
+                    $NR_zam = ''; 
+                }
+
+    //jesli w linku powrotu jest nr transakcji
+    if($NR_zam != ''){  
+
+        // dane zamowienia z bazy
+
+        $q = 'SELECT `virtuemart_order_id`,`order_number`,`order_status`,`modified_on`, TIMESTAMPDIFF(MINUTE,`modified_on`, NOW()) as minute, TIMESTAMPDIFF(SECOND,`modified_on`, NOW()) as second, (TIMEDIFF(NOW(), UTC_TIMESTAMP)) as time_diff FROM `#__virtuemart_orders` WHERE `order_number`="' .$NR_zam . '"';
+
+        $db = JFactory::getDBO();
+        $db->setQuery($q);
+        $data_order1 = $db->loadAssocList();	
+
+    // szukam zamówienia po numerze
+    if(isset($data_order1[0])) {
+
+            $data_order = $data_order1[0]; 
+
+            $timesplit=explode(':',$data_order['time_diff']);
+            $min=($timesplit[0]*60)+($timesplit[1])+($timesplit[2]>30?1:0);
+            
+            $timezone_utc_min = (int)$min;
+            $timezone_utc_sec = (int)$min*60;
+
+                if($data_order['minute'] - $timezone_utc_min > 1){
+
+                    $timediff = $data_order['minute'] - $timezone_utc_min .' '.vmText::_('PLG_MESSAGE_NOTIFY_TIME_MINUTES'); 
+                }else {
+                    $timediff = $data_order['second'] - $timezone_utc_sec.' '.vmText::_('PLG_MESSAGE_NOTIFY_TIME_SECONDS');
+                }
+                if((int)$data_order['virtuemart_order_id']){
+                    $ID_zam = (int)$data_order['virtuemart_order_id'];
+                }else{
+                    $ID_zam = '';
+                }
+                
+                $html_info_notification_when = vmText::_('PLG_MESSAGE_NOTIFY_TIME2').' '.$timediff .' '.vmText::_('PLG_MESSAGE_NOTIFY_TIME3');
+    
+
+     /**  notifications */
+
+        // sprawdzam w historii zamówienia czy jest już informacja o poprawnej platnosci
+        //$q2 = 'SELECT `comments`,count(`comments`) as `wykonane`,`modified_on`, TIMESTAMPDIFF(MINUTE,`modified_on`, NOW()) as minute, TIMESTAMPDIFF(SECOND,`modified_on`, NOW()) as second FROM `#__virtuemart_order_histories` WHERE `virtuemart_order_id`= "' .$ID_zam . '" AND `order_status_code` LIKE "C" AND `comments` LIKE "%- completed)%" ORDER BY `#__virtuemart_order_histories`.`virtuemart_order_history_id` DESC LIMIT 1';
+
+
+        // sprawdzam w historii zamówienia jaka jest ostatnia informacja o notyfikacji do zamówienia do 180 minut wstecz
+        $q3 = 'SELECT `virtuemart_order_id`, `order_status_code`, `comments`, TIMESTAMPDIFF(MINUTE,`modified_on`, NOW()) as `minut` FROM `#__virtuemart_order_histories` WHERE `virtuemart_order_id`= "' .$ID_zam . '" AND (TIMESTAMPDIFF(MINUTE,`modified_on`, NOW())) < 180 ORDER BY `#__virtuemart_order_histories`.`virtuemart_order_history_id` DESC LIMIT 1';
+
+        $db3 = JFactory::getDBO();
+        $db3->setQuery($q3);
+        $stat_last = $db3->loadAssocList();	
+    
+    
+            if(count($stat_last) >0 ){
+                $order_status_c = $stat_last[0]['order_status_code'];
+                $b = explode(' - ',$stat_last[0]['comments']);
+                
+                if(isset($b[1])){
+                    $status_1 = str_replace(')', '', $b[1]);  
+                    $dp_status = str_replace('.', '', $status_1);
+                }else{
+                    $dp_status = '';
+                }
+    
+                if (preg_match("/^[a-z]{3,15}$/", $dp_status)) {
+                    $dp_last_st = $dp_status; 
+                }else{ 
+                    $dp_last_st  = ''; 
+                }
+          
+            }else{
+                $dp_last_st  = '';
+                $order_status_c = '';
+            }
+
+              
+            // jesli nie znaleziono  statusu dla tego zamowienia
+            if(!isset($data_order['order_status'])){
+
+                JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_LACK').'</b><br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_LACK_TXT1').'','alert',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+
+            } else {  //jesli notyfikacja w ciagu ostatnich 180 minut byla dostarczona i zarejestrowano w historii zamowienia
+
+                    
+                    if($order_status_c !=''){
+
+                        if($data_order['order_status'] == "C" && $ID_zam == $data_order['virtuemart_order_id']){
+
+                            if($data_order['order_status'] == "C" && $dp_last_st == "rejected" && $ID_zam == $data_order['virtuemart_order_id']){
+                                JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER').': '.$data_order['order_number'].' '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_REJECT1').'</b><br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_COMPLETED_BEFORE_TXT1').'<br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_COMPLETED_BEFORE_TXT2').'<br>','alert',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+                        
+                            }
+                        
+                            else if($data_order['order_status'] == "C" && $dp_last_st != "rejected" && $ID_zam == $data_order['virtuemart_order_id']){
+                                JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER').': '.$data_order['order_number'].' '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_COMPLETED').'</b><br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_COMPLETED_THANKS').'<br><br>','message',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+                        
+                            }else{
+                                JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER').': '.$data_order['order_number'].' '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_COMPLETED').'</b><br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_COMPLETED_THANKS').'<br><br>','message',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+                            }
+                    
+                        }
+                        
+                        else if($data_order['order_status'] == "P" && $order_status_c == "P" && $dp_last_st == "new" && $ID_zam == $data_order['virtuemart_order_id']){
+                            
+                            JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_INITIATED').'</b><br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_INITIATED_TXT1').'<br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_INITIATED_TXT2').' <b>'.$data_order['order_number'].'</b> '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_NUMBER_DP').'','warning',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+                    
+                        } else if($data_order['order_status'] == "P" && $order_status_c == "P" && $dp_last_st != "new" && $dp_last_st != "rejected" && $ID_zam == $data_order['virtuemart_order_id']){
+                            
+                            JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_WAITING').'</b><br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_INITIATED_TXT1').'<br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_INITIATED_TXT2').' <b>'.$data_order['order_number'].'</b> '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_NUMBER_DP').'','warning',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+
+                        } else if($data_order['order_status'] == "P" && $order_status_c == "P" && $dp_last_st == "rejected" && $ID_zam == $data_order['virtuemart_order_id']){
+                            
+                            JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER').': '.$data_order['order_number'].' '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_REJECT2').'</b><br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_REJECT3').'<br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_INITIATED_TXT2').' '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_NUMBER_DP').'','error',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+
+                        
+                        }else{
+                            
+                            JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_LACK').'</b><br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_INITIATED_TXT2').' '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_NUMBER_DP').'','alert',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+                        }
+                    
+                    } else{  //// jesli w ciagu ostanich 180 minut nie ma notyfikacji do tego zamówienia
+            
+                        if($data_order['order_status'] == "P"  && $ID_zam == $data_order['virtuemart_order_id']){
+                    
+                            JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER').': '.$data_order['order_number'].' '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_REJECT2').'</b><br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_REJECT3').'<br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_INITIATED_TXT2').' '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_NUMBER_DP').'','error',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+                    
+                        }
+                        if($data_order['order_status'] == "C" && $dp_last_st != "rejected" && $ID_zam == $data_order['virtuemart_order_id']){
+                            JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER').': '.$data_order['order_number'].' '.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_COMPLETED').'</b><br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_PAYMENT_FOR_ORDER_COMPLETED_THANKS').'<br><br>','message',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+                    
+                            }
+                        
+                        }
+ 
+            
+            }
+
+           // return true;
+        } else {
+            $timediff = ''; 
+            $ID_zam = ''; 
+            $html_info_notification_when = vmText::_('PLG_MESSAGE_NOTIFY_TIME1');  
+    
+            JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_LACK').'</b><br>'.vmText::_('PLG_MESSAGE_NOTIFY_LACK_TXT2').'<br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_LACK_TXT1').'','alert',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+        // return true;
+        }   
+
+
+    }else{  //jesli w linku powrotu nie ma nr transakcji
+            $timediff = ''; 
+            $ID_zam = ''; 
+            $html_info_notification_when = vmText::_('PLG_MESSAGE_NOTIFY_TIME1');
+
+            JFactory::getApplication()->enqueueMessage( '<br><b>'.vmText::_('PLG_MESSAGE_NOTIFY_LACK').'</b><br>'.vmText::_('PLG_MESSAGE_NOTIFY_LACK_TXT2').'<br><br>'.vmText::_('PLG_MESSAGE_NOTIFY_LACK_TXT1').'','alert',vmText::_('PLG_MESSAGE_NOTIFY_TITLE') );
+          //  return true;
+
     }
+
+
+
+        $html = "<em>". $html_info_notification_when."</em>";
+
+        vRequest::setVar('display_title', false);
+        vRequest::setVar('html', $html);
+        return true;
+}
+
+
+	function loadVmClass($className, $fileName) {
+		if(!class_exists($className)) {
+			if(file_exists($fileName)) {
+				require($fileName);
+			} else {
+				vmError('Programming error:' . __FUNCTION__ . ' trying to load:' . $fileName);
+			}
+		}
+	}
+
+
+   /**
+    * tools: zmiana tablicy wynków z bazy - historia zamówienia - 'comments' 
+    */ 
+    public function array_value_recursive($key, array $arr){
+        $val = array();
+        array_walk_recursive($arr, function($v, $k) use($key, &$val){
+            if($k == $key) array_push($val, $v);
+        });
+        return count($val) > 1 ? $val : array_pop($val);
+    }
+
+
+    public function getClientIp($list_ip = null)
+    {
+        $ipaddress = '';
+        // CloudFlare support
+        if (array_key_exists('HTTP_CF_CONNECTING_IP', $_SERVER)) {
+            // Validate IP address (IPv4/IPv6)
+            if (filter_var($_SERVER['HTTP_CF_CONNECTING_IP'], FILTER_VALIDATE_IP)) {
+                $ipaddress = $_SERVER['HTTP_CF_CONNECTING_IP'];
+                return $ipaddress;
+            }
+        }
+        if (array_key_exists('X-Forwarded-For', $_SERVER)) {
+            $_SERVER['HTTP_X_FORWARDED_FOR'] = $_SERVER['X-Forwarded-For'];
+        }
+        if (isset($_SERVER['HTTP_X_FORWARDED_FOR']) && $_SERVER['HTTP_X_FORWARDED_FOR']) {
+            if (strpos($_SERVER['HTTP_X_FORWARDED_FOR'], ',')) {
+                $ips = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+                $ipaddress = $ips[0];
+            } else {
+                $ipaddress = $_SERVER['HTTP_X_FORWARDED_FOR'];
+            }
+        } else {
+            $ipaddress = $_SERVER['REMOTE_ADDR'];
+        }
+
+
+        if (isset($list_ip) && $list_ip != null) {
+            if (array_key_exists('HTTP_X_FORWARDED_FOR', $_SERVER)) {
+                return  $_SERVER["HTTP_X_FORWARDED_FOR"];
+            } else if (array_key_exists('HTTP_CF_CONNECTING_IP', $_SERVER)) {
+                return $_SERVER["HTTP_CF_CONNECTING_IP"];
+            } else if (array_key_exists('REMOTE_ADDR', $_SERVER)) {
+                return $_SERVER["REMOTE_ADDR"];
+            }
+        } else {
+            return $ipaddress;
+        }
+    }
+
+
+
 
     /**
      * Procesowanie odpowiedzi od dotpay
      */
     public function plgVmOnPaymentNotification() {
         $jinput = JFactory::getApplication()->input;
+
+        $DP_post_array = $jinput->getArray($_POST);
+
         $paymentMethod = $this->getVmPluginMethod($jinput->get->get('pm', 0));
 
         if(!$this->isPluginValidated($paymentMethod)){
             exit('plugin error');
         }
 
+// diagnostic only for customer service dotpay :
+
+        if(($_SERVER["REMOTE_ADDR"] == self::DP_SUPPORT_IP || $this->getClientIp() == self::DP_SUPPORT_IP) && strtoupper($_SERVER['REQUEST_METHOD']) == 'GET') {
+
+
+
+            exit("Virtuemart Dotpay payment module debug:<br><br>
+			       -------------------------------".
+                "<br> * Virtuemart ver: " .vmVersion::$RELEASE. " rev. ".vmVersion::$REVISION. " [".vmVersion::$CODENAME ."]". ", release date: ". vmVersion::$RELDATE .
+                "<br><br> * Joomla ver: ". JVERSION . ' - '.JVM_VERSION. 
+                "<br> * PHP ver: ". PHP_VERSION .
+
+                "<br>  ____________________________________________________________________________________ <br> ".
+
+                "<br> * Dotpay module ver: ".self::DOTPAY_MODULE_VERSION.", release date: ".self::DP_RELDATE.
+				"<br>&nbsp;&nbsp;  - ID: ". $paymentMethod->dotpay_id.
+                "<br>&nbsp;&nbsp;  - Test mode: ".(bool)$this->getDPConf('fake_real').
+                "<br>&nbsp;&nbsp;  - Automatyczne przekierowanie: ".$this->getDPConf('autoredirect').
+                "<br>&nbsp;&nbsp;  - Opłata dodatkowa wyboru płatności (stała): ".$this->getDPConf('cost_per_transaction').
+                "<br>&nbsp;&nbsp;  - Opłata dodatkowa zależna od wartości zamówienia (procent od zamówienia): ".$this->getDPConf('cost_percent_total')
+            );
+        }
+
+   //  ---- . 
+
+
+
         if(!$this->isIpValidated($paymentMethod)){
-            exit('untrusted_ip');
+            exit('Virtuemart - untrusted ip: '.$_SERVER["REMOTE_ADDR"].' ('.$this->getClientIp().')' );
         }
 
-        if(!$this->isSingnatureValidated($jinput->post, $paymentMethod)){
-            exit('signature mismatch');
+        if (strtoupper($_SERVER['REQUEST_METHOD']) != 'POST') {
+            exit("Virtuemart - ERROR (METHOD <> POST)");
         }
 
-        $paymentModel = $this->getPaymentModel($jinput->post->get('control'));
 
-        if(!$this->isCurrencyMatch($jinput->post, $paymentModel)){
-            exit('currency mismatch');
+        $check_signature = $this->isSingnatureValidated($DP_post_array, $paymentMethod); 
+
+         if($check_signature != true)
+        {
+           exit('Virtuemart - signature mismatch !');
+        }
+ 
+        $control1 = explode('|', (string)$DP_post_array['control']);     
+
+        $paymentModel = $this->getPaymentModel($control1[0]);
+
+
+        if(!$this->isCurrencyMatch($DP_post_array['operation_original_currency'], $paymentModel)){
+            exit('Virtuemart - currency mismatch');
         }
 
-        if(!$this->isPriceMatch($jinput->post, $paymentModel)){
-            exit('price mismatch');
+        if(!$this->isPriceMatch($DP_post_array['operation_original_amount'], $paymentModel)){
+            exit('Virtuemart - price mismatch');
         }
 
         $order_id = $paymentModel->virtuemart_order_id;
 
+
+        // historia zamowienia:
+
+        $q = 'SELECT `comments` FROM `#__virtuemart_order_histories` WHERE `virtuemart_order_id`="' .$order_id . '" AND `order_status_code` = "C" ';
+		$db = JFactory::getDBO();
+		$db->setQuery($q);
+        $comments = $db->loadAssocList();	
+       
+        $orderComment1 = [];
+
+                foreach ((array)$comments as $comment1) {
+                        $body1 = $comment1['comments'];
+                        preg_match_all("/M\d{4,5}\-\d{4,5}/", $body1, $matches);
+                        $body2 = array_unique($matches[0]);
+                        $orderComment1[] = $body2;
+               
+                    }       
+    
+     $dotpay_transaction_number_array = $this->array_value_recursive('0', $orderComment1);             
+   
         if($paymentModel->order_status != "C" && $paymentModel->order_status != 'X'){
 
 
-            switch($jinput->post->get('operation_status')){
+            switch($DP_post_array['operation_status']){
+                case 'new':
+                    $this->newStatus($order_id, $paymentMethod->status_pending, vmText::_('PLG_MESSAGE_STATUS_NEW').' ('.$DP_post_array['operation_number'].' - new).', $paymentMethod->feedback);
+
+                    break;
                 case 'completed':
-                        $this->newStatus($order_id, $paymentMethod->status_success, self::PLG_MESSAGE_STATUS_OK, $paymentMethod->feedback);
+                        $this->newStatus($order_id, $paymentMethod->status_success, vmText::_('PLG_MESSAGE_STATUS_OK').' ('.$DP_post_array['operation_number'].' - completed).', $paymentMethod->feedback);
 
                     break;
                 case 'rejected':
-                        $this->newStatus($order_id, $paymentMethod->status_canceled, self::PLG_MESSAGE_STATUS_FAIL, $paymentMethod->feedback);
+                        $this->newStatus($order_id, $paymentMethod->status_canceled, vmText::_('PLG_MESSAGE_STATUS_FAIL').' ('.$DP_post_array['operation_number'].' - rejected).', $paymentMethod->feedback);
                     break;
             }
+
             exit('OK');
         }
+        if($paymentModel->order_status == "C" && $DP_post_array['operation_status'] == 'completed')
+        {   
+            // jesli w komentarzach nie ma takiego numeru transakcji - moze oznaczac ze to kolejna platnosc za to samo zamowienie
+            if (!in_array($DP_post_array['operation_number'], $dotpay_transaction_number_array)) {
+
+                $this->newStatus($order_id, $paymentMethod->status_success, vmText::_('PLG_MESSAGE_STATUS_DUBEL').' ('.$DP_post_array['operation_number'].' - completed).', $paymentMethod->feedback);
+
+            }else{
+                $this->newStatus($order_id, $paymentMethod->status_success, vmText::_('PLG_MESSAGE_STATUS_OK_AGAIN').' ('.$DP_post_array['operation_number'].' - completed).', $paymentMethod->feedback);
+            }
+
+            exit('OK');
+        }
+
+        if($paymentModel->order_status == "C" && $DP_post_array['operation_status'] == 'rejected')
+        {   
+                $this->newStatus($order_id, $paymentMethod->status_success, vmText::_('PLG_MESSAGE_STATUS_FAIL_AFTER_COMPLETED').' ('.$DP_post_array['operation_number'].' - rejected).', $paymentMethod->feedback);
+
+                exit('OK');
+        }
+
     }
 
 
@@ -393,12 +750,12 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 	
 
     function getCosts(VirtueMartCart $cart, $method, $cart_prices) {
-        if (preg_match('/%$/', $method->cost_percent_total)) {
-            $cost_percent_total = substr($method->cost_percent_total, 0, -1);
+        if (preg_match('/%$/', (string)$method->cost_percent_total)) {
+            $cost_percent_total = (string)substr($method->cost_percent_total, 0, -1);
         } else {
-            $cost_percent_total = $method->cost_percent_total;
+            $cost_percent_total = (string)$method->cost_percent_total;
         }
-        return ($method->cost_per_transaction + ($cart_prices['salesPrice'] * $cost_percent_total *
+        return ((string)$method->cost_per_transaction + ($cart_prices['salesPrice'] * $cost_percent_total *
             0.01));
     }
 
@@ -502,7 +859,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
         $db = JFactory::getDBO();
 
-
+          
         if($status == "C" || $status == "X"){
             $q = 'UPDATE '.$this->_tablename.' SET modified_on=NOW(), locked_on=NOW() WHERE virtuemart_order_id='. $order_id.';   ';
         }else{
@@ -514,6 +871,8 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return 'PLG_DOTPAY_STATUS_CHANGE';
     }
 
+
+
     /**
      * Sprawdza czy waluta  z notyfikacji dotpaya zgadza sie z ta z
      * orderu
@@ -524,7 +883,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      */
     private function isCurrencyMatch($post, $paymentModel)
     {
-        return $paymentModel->payment_currency == $post->get('operation_original_currency');
+        return $paymentModel->payment_currency == $post;
     }
 
     /**
@@ -536,7 +895,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      */
     private function isPriceMatch($post, $paymentModel)
     {
-        return $paymentModel->payment_order_total == $post->get('operation_original_amount');
+        return $paymentModel->payment_order_total == $post;
     }
 
     /**
@@ -560,7 +919,66 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      * @param $paymentMethod
      * @return bool
      */
-    private function isSingnatureValidated($post, $paymentMethod)
+ 
+ 
+    private function isSingnatureValidated($post, $paymentMethod,$debug=false)
+    {
+          $string = $paymentMethod->dotpay_pin .
+                    (isset($post['id']) ? $post['id'] : null).
+                    (isset($post['operation_number']) ? $post['operation_number'] : null).
+                    (isset($post['operation_type']) ? $post['operation_type'] : null).
+                    (isset($post['operation_status']) ? $post['operation_status'] : null).
+                    (isset($post['operation_amount']) ? $post['operation_amount'] : null).
+                    (isset($post['operation_currency']) ? $post['operation_currency'] : null).
+                    (isset($post['operation_withdrawal_amount']) ? $post['operation_withdrawal_amount'] : null).
+                    (isset($post['operation_commission_amount']) ? $post['operation_commission_amount'] : null).
+                    (isset($post['is_completed']) ? $post['is_completed'] : null).
+                    (isset($post['operation_original_amount']) ? $post['operation_original_amount'] : null).
+                    (isset($post['operation_original_currency']) ? $post['operation_original_currency'] : null).
+                    (isset($post['operation_datetime']) ? $post['operation_datetime'] : null).
+                    (isset($post['operation_related_number']) ? $post['operation_related_number'] : null).
+                    (isset($post['control']) ? $post['control'] : null).
+                    (isset($post['description']) ? $post['description'] : null).
+                    (isset($post['email']) ? $post['email'] : null).
+                    (isset($post['p_info']) ? $post['p_info'] : null).
+                    (isset($post['p_email']) ? $post['p_email'] : null).
+                    (isset($post['credit_card_issuer_identification_number']) ? $post['credit_card_issuer_identification_number'] : null).
+                    (isset($post['credit_card_masked_number']) ? $post['credit_card_masked_number'] : null).
+                    (isset($post['credit_card_expiration_year']) ? $post['credit_card_expiration_year'] : null).
+                    (isset($post['credit_card_expiration_month']) ? $post['credit_card_expiration_month'] : null).
+                    (isset($post['credit_card_brand_codename']) ? $post['credit_card_brand_codename'] : null).
+                    (isset($post['credit_card_brand_code']) ? $post['credit_card_brand_code'] : null).
+                    (isset($post['credit_card_unique_identifier']) ? $post['credit_card_unique_identifier'] : null).
+                    (isset($post['credit_card_id']) ? $post['credit_card_id'] : null).
+                    (isset($post['channel']) ? $post['channel'] : null).
+                    (isset($post['channel_country']) ? $post['channel_country'] : null).
+                    (isset($post['geoip_country']) ? $post['geoip_country'] : null).
+                    (isset($post['payer_bank_account_name']) ? $post['payer_bank_account_name'] : null).
+                    (isset($post['payer_bank_account']) ? $post['payer_bank_account'] : null).
+                    (isset($post['payer_transfer_title']) ? $post['payer_transfer_title'] : null).
+                    (isset($post['blik_voucher_pin']) ? $post['blik_voucher_pin'] : null).
+                    (isset($post['blik_voucher_amount']) ? $post['blik_voucher_amount'] : null).
+                    (isset($post['blik_voucher_amount_used']) ? $post['blik_voucher_amount_used'] : null);
+
+                //! Warning: is only for the debug!    
+                if($debug == true) {
+
+                    return ($string.'<br>signature: '.$post['signature'].'<br>calculate: '.hash('sha256', $string));
+
+                } else{
+
+                    if((string)trim($post['signature']) == (string)hash('sha256', trim($string))){
+                        return true;
+                    }else{
+                        return false;
+                    }
+                }
+
+
+    }
+ 
+ 
+     private function isSingnatureValidated2($post, $paymentMethod)
     {
         $string = $paymentMethod->dotpay_pin .
             $post->get('id', '', 'STRING') .
@@ -571,18 +989,33 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             $post->get('operation_currency', '', 'STRING') .
             $post->get('operation_withdrawal_amount', '', 'STRING') .
             $post->get('operation_commission_amount', '', 'STRING') .
+            $post->get('is_completed', '', 'STRING') .
             $post->get('operation_original_amount', '', 'STRING') .
             $post->get('operation_original_currency', '', 'STRING') .
-            $post->get('operation_datetime', '','STRING') .
+            $post->get('operation_datetime', '', 'STRING') .
             $post->get('operation_related_number', '', 'STRING') .
             $post->get('control', '', 'STRING') .
-            $post->get('description', '','STRING') .
+            $post->get('description', '', 'STRING') .
             $post->get('email', '', 'STRING') .
             $post->get('p_info', '', 'STRING') .
             $post->get('p_email', '', 'STRING') .
+            $post->get('credit_card_issuer_identification_number', '', 'STRING') .
+            $post->get('credit_card_masked_number', '', 'STRING') .
+            $post->get('credit_card_expiration_year', '', 'STRING') .
+            $post->get('credit_card_expiration_month', '', 'STRING') .
+            $post->get('credit_card_brand_codename', '', 'STRING') .
+            $post->get('credit_card_brand_code', '', 'STRING') .
+            $post->get('credit_card_unique_identifier', '', 'STRING') .
+            $post->get('credit_card_id', '', 'STRING') .
             $post->get('channel', '', 'STRING') .
             $post->get('channel_country', '', 'STRING') .
-            $post->get('geoip_country','', 'STRING');
+            $post->get('geoip_country', '', 'STRING') .
+            $post->get('payer_bank_account_name', '', 'STRING') .
+            $post->get('payer_bank_account', '', 'STRING') .
+            $post->get('payer_transfer_title', '', 'STRING') .
+            $post->get('blik_voucher_pin', '', 'STRING') .
+            $post->get('blik_voucher_amount', '', 'STRING') .
+            $post->get('blik_voucher_amount_used', '', 'STRING') ;
 
 
         if($post->get('signature') == hash('sha256', $string)){
@@ -598,12 +1031,11 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      */
     private function isIpValidated($paymentMethod)
     {
-        if($_SERVER['REMOTE_ADDR'] == self::DOTPAY_IP){
+        if($_SERVER['REMOTE_ADDR'] == self::DOTPAY_IP || $this->getClientIp() == self::DOTPAY_IP ){
             return true;
         }
-        if($_SERVER['REMOTE_ADDR'] == '127.0.0.1' && $paymentMethod->fake_real == '1'){
-            return true;
-        }
+
+        return false;
     }
 
     /**
@@ -644,7 +1076,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      */
     private function getUrl($orderDetails)
     {
-        return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginresponsereceived&pm='.$orderDetails->virtuemart_paymentmethod_id;
+        return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginresponsereceived&pm='.$orderDetails->virtuemart_paymentmethod_id.'&oid='.$orderDetails->order_number;
     }
 
     /**
@@ -656,6 +1088,159 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     private function getUrlc($orderDetails)
     {
         return JURI::root().'index.php?option=com_virtuemart&view=pluginresponse&task=pluginnotification&tmpl=component&pm='.$orderDetails->virtuemart_paymentmethod_id;
+    }
+
+        /**
+    	 * checks and crops the size of a string
+    	 * the $special parameter means an estimate of how many urlencode characters can be used in a given field
+    	 * e.q. 'ż' (1 char) -> '%C5%BC' (6 chars)
+    	 * replacing removing double or more special characters that appear side by side by space from: firstname, lastname, city, street, p_info...
+    	 */
+    	public function encoded_substrParams($string, $from, $to, $special=0)
+    		{
+    			$string2 = preg_replace('/(\s{2,}|\.{2,}|@{2,}|\-{2,}|\/{3,} | \'{2,}|\"{2,}|_{2,})/', ' ', $string);
+    			$s = html_entity_decode($string2, ENT_QUOTES, 'UTF-8');
+    			$sub = mb_substr($s, $from, $to,'UTF-8');
+    			$sum = strlen(urlencode($sub));
+    			if($sum  > $to)
+    				{
+    					$newsize = $to - $special;
+    					$sub = mb_substr($s, $from, $newsize,'UTF-8');
+    				}
+    			return trim($sub);
+    		}
+
+
+                /**
+     * Return customer firstname
+     * @return string
+     */
+    public function getFirstnameDP($firstName)
+    {
+        //allowed only: letters, digits, spaces, symbols _-.,'
+        $firstName = preg_replace('/[^\w _-]/u', '', $firstName);
+        $firstName1 = html_entity_decode($firstName, ENT_QUOTES, 'UTF-8');
+
+
+        $NewPersonName1 = preg_replace('/[^\p{L}0-9\s\-_]/u',' ',$firstName1);
+        return $this->encoded_substrParams($NewPersonName1,0,49,24);
+    }
+
+    /**
+     * Return customer lastname
+     * @return string
+     */
+    public function getLastnameDP($lastName)
+    {
+        //allowed only: letters, digits, spaces, symbols _-.,'
+        $lastName = preg_replace('/[^\w _-]/u', '', $lastName);
+        $lastName1 = html_entity_decode($lastName, ENT_QUOTES, 'UTF-8');
+
+        $NewPersonName2 = preg_replace('/[^\p{L}0-9\s\-_]/u',' ',$lastName1);
+        return $this->encoded_substrParams($NewPersonName2,0,49,24);
+    }
+
+
+    /**
+     * Return customer phone
+     * @return string
+     */
+    public function getPhoneDP($phone)
+    {
+        $phone = str_replace(' ', '', $phone);
+        $phone = str_replace('+', '', $phone);
+
+        $NewPhone1 = preg_replace('/[^\+\s0-9\-_]/','',$phone);
+        $NewPhone2 = trim($this->encoded_substrParams($NewPhone1,0,19,6));
+          if((bool)preg_match('/^[\d\w\s\-]{0,20}$/', $NewPhone2) ) {
+                return $NewPhone2;
+          }else {
+                return null;
+          }
+    }
+
+
+    /**
+     * Return customer city
+     * @return string
+     */
+    public function getCityDP($city)
+    {
+
+        //allowed only: letters, digits, spaces, symbols _-.,'
+        $city = preg_replace('/[^.\w \'_-]/u', '', $city);
+        $city1 = html_entity_decode($city, ENT_QUOTES, 'UTF-8');
+
+        return $this->encoded_substrParams($city1,0,49,24);
+
+    }
+
+
+    /**
+     * Return customer street (address_1)
+     * @return string
+     */
+    public function getStreetDP($street)
+    {
+
+        //allowed only: letters, digits, spaces, symbols _-.,'
+        $street = preg_replace('/[^.\w \'_-]/u', '', $street);
+        $street1 = html_entity_decode($street, ENT_QUOTES, 'UTF-8');
+
+        return $this->encoded_substrParams($street1,0,99,50);
+
+    }
+
+    /**
+     * Return customer street_n1 (address_2)
+     * @return string
+     */
+    public function getStreet2DP($street_n1)
+    {
+
+        //allowed only: letters, digits, spaces, symbols _-.,'
+        $building_number = preg_replace('/[^\p{L}0-9\s\-_\/]/u',' ',$street_n1);
+        $building_number1 = html_entity_decode($building_number, ENT_QUOTES, 'UTF-8');
+
+        return $this->encoded_substrParams($building_number1,0,29,24);
+
+    }
+
+
+    /**
+     * Return customer postcode
+     * @return string
+     */
+    public function getPostcodeDP($postcode,$lang='pl')
+    {
+
+        if (empty($postcode)) {
+            return $postcode;
+        }
+        if (preg_match('/^\d{2}\-\d{3}$/', $postcode) == 0 && strtolower($lang) == 'pl') {
+            $postcode = str_replace('-', '', $postcode);
+            $postcode = substr($postcode, 0, 2) . '-' . substr($postcode, 2, 3);
+        }
+
+        $NewPostcode1 = preg_replace('/[^\d\w\s\-]/','',$postcode);
+        return $this->encoded_substrParams($NewPostcode1,0,19,6);
+
+    }
+
+    /**
+     * Return customer country
+     * @return string
+     */
+    public function getCountryDP($country)
+    {
+
+        if (preg_match('/^[a-zA-Z]{2,3}$/', trim($country)) == 0) {
+            $country_check = null;
+         }else{
+            $country_check = trim($country);
+         }
+         $country_check1 = html_entity_decode($country_check, ENT_QUOTES, 'UTF-8');
+        return strtoupper($country_check1);
     }
 
 
@@ -670,13 +1255,208 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     {
         $html = '
 		<div style="text-align: center; width: 100%; ">
-		<form action="'. $this->getDotpayUrl($paymentMethod) .'" method="POST" class="form" name="platnosc_dotpay" id="platnosc_dotpay">';
+		<form action="'. $this->getDotpayUrl($paymentMethod) .'" method="POST" class="platnosc_dotpay" name="platnosc_dotpay" id="platnosc_dotpay">';
         $html .= $this->getHtmlInputs($orderData);
 
         $html .= $this->getHtmlFormEnd();
         return $html;
     }
 
+   
+    /**
+     * Returns correct SERVER NAME or HOSTNAME
+     * @return string
+     */
+    private function geShoptHost()
+    {
+        $possibleHostSources = array('HTTP_X_FORWARDED_HOST', 'HTTP_HOST', 'SERVER_NAME', 'SERVER_ADDR');
+        $sourceTransformations = array(
+            "HTTP_X_FORWARDED_HOST" => function($value) {
+                $elements = explode(',', $value);
+                return trim(end($elements));
+            }
+        );
+        $host = '';
+        foreach ($possibleHostSources as $source)
+        {
+            if (!empty($host)) break;
+            if (empty($_SERVER[$source])) continue;
+            $host = $_SERVER[$source];
+            if (array_key_exists($source, $sourceTransformations))
+            {
+                $host = $sourceTransformations[$source]($host);
+            }
+        }
+        // Remove port number from host
+        $host = preg_replace('/:\d+$/', '', $host);
+            if((bool) preg_match('/^[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,10}$/', trim($host))){
+                $server_name = trim($host);
+            } else {
+                $server_name = "HOSTNAME";
+            }
+
+     return $server_name;   
+
+    }
+
+
+
+    private function getInputsForm($orderData)
+    {
+        if (null !== $this->getPhoneDP($orderData['phone_2']) ) {
+            $phone = $this->getPhoneDP($orderData['phone_2']);
+        } else {
+            $phone = $this->getPhoneDP($orderData['phone_1']);
+        }
+
+        $data = array(
+            'id'            => $orderData['dotpay_id'],
+            'amount'        => $orderData['amount'],
+            'currency'      => $orderData['currency'],
+            'control'       => $orderData['dotpay_control'].'|domain:'.$this->geShoptHost().'|VirtueMart:v'.vmVersion::$RELEASE.'|Dotpay module v:'.self::DOTPAY_MODULE_VERSION,
+            'description'   => $orderData['description'],
+            'lang'          => $orderData['lang'],
+            'type'          => '0',
+            'url'           => $orderData['url'],
+            'urlc'          => $orderData['urlc'],
+            'firstname'     => $this->getFirstnameDP($orderData['first_name']),
+            'lastname'      => $this->getLastnameDP($orderData['last_name']),
+            'email'         => $orderData['email'],
+            'city'          => $this->getCityDP($orderData['city']),
+            'street'        => $this->getStreetDP($orderData['address_1']),
+            'street_n1'     => $this->getStreet2DP($orderData['address_2']),            
+            'postcode'      => $this->getPostcodeDP($orderData['postcode'],$orderData['lang']),
+            'phone'         => $phone,
+            'country'       => $this->getCountryDP($orderData['country']),
+            'api_version'   => 'dev'
+        );
+    
+        return $data;
+
+    }
+
+
+    /**
+     * Zwraca konfigurację do konta Dotpay zapisana do bazy
+     *
+     * @return string
+     */
+    private function getDPConf($what){
+
+		$query = "SELECT `payment_params` FROM `#__virtuemart_paymentmethods` WHERE  payment_element = 'dotpay'";
+
+		$db = JFactory::getDBO();
+		$db->setQuery($query);
+		$params = $db->loadResult();
+
+        if($what == 'dotpay_pin'){
+            preg_match('/\|dotpay_pin="(\w+)"\|/', $params, $get_pin);
+
+            if (isset($get_pin[1]) &&  ((strlen(trim($get_pin[1])) >= 16) && (strlen(trim($get_pin[1])) <= 32) )){
+                return trim($get_pin[1]);
+            }else{
+                return false;
+            }
+        }
+        else if($what == 'fake_real') {
+            preg_match('/\|fake_real="(\d+)"\|/', $params, $get_param1);
+            if (isset($get_param1[1])){
+                return trim($get_param1[1]);
+            }else{
+                return false;
+            }
+        }
+        else if($what == 'cost_per_transaction') {
+            preg_match('/\|cost_per_transaction="([\d\.]+)"\|/', $params, $get_param1);
+            if (isset($get_param1[1])){
+                return trim($get_param1[1]);
+            }else{
+                return false;
+            }
+        }
+        else if($what == 'cost_percent_total') {
+            preg_match('/\|cost_percent_total="([\d\.]+)"\|/', $params, $get_param2);
+            if (isset($get_param2[1])){
+                return trim($get_param2[1]);
+            }else{
+                return false;
+            }
+        }
+        else if($what == 'autoredirect') {
+            preg_match('/\|autoredirect="(\d+)"\|/', $params, $get_param2);
+            if (isset($get_param2[1])){
+                return trim($get_param2[1]);
+            }else{
+                return false;
+            }
+        }
+
+        else if($what == 'feedback') {
+            preg_match('/\|feedback="(\d+)"\|/', $params, $get_param2);
+            if (isset($get_param2[1])){
+                return trim($get_param2[1]);
+            }else{
+                return false;
+            }
+        }else{
+            return false;
+        }
+
+        return false;
+    }
+
+
+    /**
+     * Generate CHK for seller and payment data
+     * @param type $DotpayPin Dotpay seller PIN
+     * @param array $orderData parameters of payment
+     * @return string
+     */
+    protected function generateCHK($orderData) {
+
+        $getinputForm = $this->getInputsForm($orderData);
+
+     $DotpayPin = $this->getDPConf('dotpay_pin');
+
+        $ChkParametersChain =
+                            $DotpayPin.
+                            (isset($getinputForm['api_version']) ? $getinputForm['api_version'] : null).
+                            (isset($getinputForm['lang']) ? $getinputForm['lang'] : null).
+                            (isset($getinputForm['id']) ? $getinputForm['id'] : null).
+                            (isset($getinputForm['amount']) ? $getinputForm['amount'] : null).
+                            (isset($getinputForm['currency']) ? $getinputForm['currency'] : null).
+                            (isset($getinputForm['description']) ? $getinputForm['description'] : null).
+                            (isset($getinputForm['control']) ? $getinputForm['control'] : null).
+                            (isset($getinputForm['channel']) ? $getinputForm['channel'] : null).
+                            (isset($getinputForm['ch_lock']) ? $getinputForm['ch_lock'] : null).
+                            (isset($getinputForm['channel_groups']) ? $getinputForm['channel_groups'] : null).
+                            (isset($getinputForm['url']) ? $getinputForm['url'] : null).
+                            (isset($getinputForm['type']) ? $getinputForm['type'] : null).
+                            (isset($getinputForm['buttontext']) ? $getinputForm['buttontext'] : null).
+                            (isset($getinputForm['urlc']) ? $getinputForm['urlc'] : null).
+                            (isset($getinputForm['firstname']) ? $getinputForm['firstname'] : null).
+                            (isset($getinputForm['lastname']) ? $getinputForm['lastname'] : null).
+                            (isset($getinputForm['email']) ? $getinputForm['email'] : null).
+                            (isset($getinputForm['street']) ? $getinputForm['street'] : null).
+                            (isset($getinputForm['street_n1']) ? $getinputForm['street_n1'] : null).
+                            (isset($getinputForm['street_n2']) ? $getinputForm['street_n2'] : null).
+                            (isset($getinputForm['state']) ? $getinputForm['state'] : null).
+                            (isset($getinputForm['addr3']) ? $getinputForm['addr3'] : null).
+                            (isset($getinputForm['city']) ? $getinputForm['city'] : null).
+                            (isset($getinputForm['postcode']) ? $getinputForm['postcode'] : null).
+                            (isset($getinputForm['phone']) ? $getinputForm['phone'] : null).
+                            (isset($getinputForm['country']) ? $getinputForm['country'] : null).
+                            (isset($getinputForm['p_info']) ? $getinputForm['p_info'] : null).
+                            (isset($getinputForm['p_email']) ? $getinputForm['p_email'] : null).
+                            (isset($getinputForm['bylaw']) ? $getinputForm['bylaw'] : null).
+                            (isset($getinputForm['personal_data']) ? $getinputForm['personal_data'] : null).
+                            (isset($getinputForm['blik_code']) ? $getinputForm['blik_code'] : null).
+                            (isset($getinputForm['ignore_last_payment_channel']) ? $getinputForm['ignore_last_payment_channel'] : null);
+
+
+        return hash('sha256',$ChkParametersChain);
+        
+    }
 
     /**
      * Na podstawie przygotowanego arraya beda renderowane inputy do formularza
@@ -684,25 +1464,31 @@ class plgVmPaymentDotpay extends vmPSPlugin {
      * @param $orderData
      * @return string
      */
+ 
     private function getHtmlInputs($orderData)
     {
+        $getinputForm = $this->getInputsForm($orderData);
+        $chk = $this->generateCHK($orderData);
+
         $data = array(
             'id'            => $orderData['dotpay_id'],
-            'amount'        => $orderData['amount'],
-            'currency'      => $orderData['currency'],
-            'control'       => $orderData['dotpay_control'],
-            'description'   => $orderData['description'],
-            'lang'          => $orderData['lang'],
+            'amount'        => $getinputForm['amount'],
+            'currency'      => $getinputForm['currency'],
+            'control'       => $getinputForm['control'],
+            'description'   => $getinputForm['description'],
+            'lang'          => $getinputForm['lang'],
             'type'          => 0,
-            'url'           => $orderData['url'],
-            'urlc'          => $orderData['urlc'],
-            'firstname'     => $orderData['first_name'],
-            'lastname'      => $orderData['last_name'],
-            'email'         => $orderData['email'],
-            'city'          => $orderData['city'],
-            'postcode'      => $orderData['postcode'],
-            'phone'         => $orderData['phone'],
-            'country'       => $orderData['country'],
+            'url'           => $getinputForm['url'],
+            'urlc'          => $getinputForm['urlc'],
+            'firstname'     => $getinputForm['firstname'],
+            'lastname'      => $getinputForm['lastname'],
+            'email'         => $getinputForm['email'],
+            'city'          => $getinputForm['city'],
+            'street'        => $getinputForm['street'],
+            'street_n1'     => $getinputForm['street_n1'],
+            'postcode'      => $getinputForm['postcode'],
+            'phone'         => $getinputForm['phone'],
+            'country'       => $getinputForm['country'],
             'api_version'   => 'dev'
         );
 
@@ -710,9 +1496,13 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         foreach($data as $key => $value){
             $html .= '<input type="hidden" name="'.$key.'" value="'.$value.'" />';
         }
+        if(null !== $this->getDPConf('dotpay_pin')){
+            $html .= '<input type="hidden" name="chk" value="'.$chk.'" />';
+        }
+
         return $html;
     }
-
+ 
 
     /**
      * Renderuje koncowke formularza i skrypt ktory wywola
@@ -724,17 +1514,15 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     {
         $src = JURI::root().'plugins/vmpayment/dotpay/'.'dp_logo_alpha_110_47.png';
 
-        $html = '<br /><b>Opłać zamównienie poprzez Dotpay.</b> <br /><br /> Redirecting to the payment page, please wait ...<br /><br />';
-        $html .='<input name="submit_send" value="" type="submit" style="border: 0; background: url(\''.$src.'\') no-repeat; width: 200px; height: 100px;padding-top:10px" /> <br /><br /><br />';
+        
+        $html = "<br /><b>".vmText::_('PLG_DOTPAY_REDIRECT_IMG_CLICK')."</b> <br /><br /> ".vmText::_('PLG_DOTPAY_REDIRECT_IMG_WAIT')."<br /><br />";
+        $html .='<input type="submit" value="" style="border: 0; background: url(\''.$src.'\') no-repeat; width: 200px; height: 100px;padding-top:10px" /> <br /><br /><br />';
         $html .='</form>';
         $html .='</div>';
 
 
         $html .= '<script type="text/javascript">';
-        $html .=    'jQuery.noConflict();';
-        $html .=	'jQuery(document).ready(function() {';
-        $html .=           'jQuery("#platnosc_dotpay").submit();';
-        $html .=    '});';
+        $html .=    'setTimeout(function(){document.getElementsByClassName("platnosc_dotpay")[0].submit();}, 10);';
         $html .= '</script>';
         return $html;
     }
