@@ -1,6 +1,9 @@
 VirtueMart Dotpay payment module
 =====================
 
+[![](https://img.shields.io/github/release/dotpay/VirtueMart.svg?style=for-the-badge)](https://github.com/dotpay/VirtueMart/releases/latest "Download")
+
+
 ####Wtyczka dla VirtueMart dodająca bramkę płatności Dotpay####
 
 Najnowsza wersja modułu oraz instrukcji instalacji:
