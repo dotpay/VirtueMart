@@ -1,9 +1,9 @@
 <?php
 /**
- * @package Dotpay Payment Plugin module for VirtueMart v3 for Joomla! 3.4
- * @version $1.0.6: dotpay.php 2021-03-26
- * @author Dotpay sp. z o.o. < tech@dotpay.pl >
- * @copyright (C) 2021 - Dotpay sp. z o.o.
+ * @package Dotpay Payment Plugin module for VirtueMart v3 for Joomla! >= 3.4
+ * @version $1.1.0: dotpay.php 2021-09-13
+ * @author PayPro S.A.. < tech@dotpay.pl >
+ * @copyright (C) 2021 - PayPro S.A.
  * @license GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
 **/
 
@@ -18,13 +18,26 @@ if (!class_exists('vmPSPlugin'))
 class plgVmPaymentDotpay extends vmPSPlugin {
 
 	/** Version information */
-    const DP_RELDATE = '2021-03-26';
-    const DOTPAY_MODULE_VERSION = '1.0.6';
+    const DP_RELDATE = '2021-09-13';
+    const DOTPAY_MODULE_VERSION = '1.1.0';
 
 
 
 	/** Dotpay IP allowed */    
-    const DOTPAY_IP = '195.150.9.37';
+    //const DOTPAY_IP = '195.150.9.37';
+
+    const DOTPAY_IP_WHITE_LIST = array(
+        '195.150.9.37',
+        '91.216.191.181',
+        '91.216.191.182',
+        '91.216.191.183',
+        '91.216.191.184',
+        '91.216.191.185',
+        '5.252.202.255',
+      );
+
+
+
     const DP_SUPPORT_IP = '77.79.195.34';
 
 
@@ -120,10 +133,11 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 			return
 				'<span class="vmCartPaymentLogo" style="width:130px; display: inline-block; text-align: center;">' .
 				'<img align="middle" src="' . JURI::root() . '/plugins/vmpayment/dotpay/'.'dp_logo_alpha_110_47.png' .
-				'"  alt="' . $name . '" /></span> ' .
+				'"  alt="' . $name . '" /></span>'.
 				parent::renderPluginName($payment_plugin);
 		}
-	
+
+
 		
     /**
      * Zwraca dane do formularza ktory przesyla je pozniej do dotpay
@@ -540,9 +554,33 @@ class plgVmPaymentDotpay extends vmPSPlugin {
             exit('plugin error');
         }
 
+
+        $dotpay_office = false;
+        $proxy_desc ='';
+
+        if( (int)$this->getDPConf('dotpay_nonproxy') == 1) {
+            $clientIp = $_SERVER['REMOTE_ADDR'];
+            $proxy_desc = 'FALSE';
+        }else{
+            $clientIp = $this->getClientIp();
+            $proxy_desc = 'TRUE';
+        }
+
+
+
+
 // diagnostic only for customer service dotpay :
 
-        if(($_SERVER["REMOTE_ADDR"] == self::DP_SUPPORT_IP || $this->getClientIp() == self::DP_SUPPORT_IP) && strtoupper($_SERVER['REQUEST_METHOD']) == 'GET') {
+
+        if( ($clientIp == self::DP_SUPPORT_IP) && (strtoupper($_SERVER['REQUEST_METHOD']) == 'GET')) 
+        {
+                $dotpay_office = true;
+        }else{
+                $dotpay_office = false;
+        }
+
+
+        if($dotpay_office == true) {
 
 
 
@@ -556,7 +594,10 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
                 "<br> * Dotpay module ver: ".self::DOTPAY_MODULE_VERSION.", release date: ".self::DP_RELDATE.
 				"<br>&nbsp;&nbsp;  - ID: ". $paymentMethod->dotpay_id.
-                "<br>&nbsp;&nbsp;  - Test mode: ".(bool)$this->getDPConf('fake_real').
+                "<br>&nbsp;&nbsp;  - Test mode: ".(int)$this->getDPConf('fake_real').
+                "<br />Server does not use a proxy: ".(int)$this->getDPConf('dotpay_nonproxy').
+                "<br /> REMOTE ADDRESS: ".$_SERVER['REMOTE_ADDR'].
+                
                 "<br>&nbsp;&nbsp;  - Automatyczne przekierowanie: ".$this->getDPConf('autoredirect').
                 "<br>&nbsp;&nbsp;  - Opłata dodatkowa wyboru płatności (stała): ".$this->getDPConf('cost_per_transaction').
                 "<br>&nbsp;&nbsp;  - Opłata dodatkowa zależna od wartości zamówienia (procent od zamówienia): ".$this->getDPConf('cost_percent_total')
@@ -566,10 +607,12 @@ class plgVmPaymentDotpay extends vmPSPlugin {
    //  ---- . 
 
 
-
-        if(!$this->isIpValidated($paymentMethod)){
-            exit('Virtuemart - untrusted ip: '.$_SERVER["REMOTE_ADDR"].' ('.$this->getClientIp().')' );
+        if (!$this->isAllowedIp($clientIp, self::DOTPAY_IP_WHITE_LIST))  
+        {
+                die("Virtuemart - ERROR (REMOTE ADDRESS: ".$this->getClientIp(true)."/".$_SERVER["REMOTE_ADDR"].", PROXY:".$proxy_desc.")");
         }
+
+
 
         if (strtoupper($_SERVER['REQUEST_METHOD']) != 'POST') {
             exit("Virtuemart - ERROR (METHOD <> POST)");
@@ -976,67 +1019,27 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
 
     }
- 
- 
-     private function isSingnatureValidated2($post, $paymentMethod)
-    {
-        $string = $paymentMethod->dotpay_pin .
-            $post->get('id', '', 'STRING') .
-            $post->get('operation_number', '', 'STRING') .
-            $post->get('operation_type', '', 'STRING') .
-            $post->get('operation_status', '', 'STRING') .
-            $post->get('operation_amount', '', 'STRING') .
-            $post->get('operation_currency', '', 'STRING') .
-            $post->get('operation_withdrawal_amount', '', 'STRING') .
-            $post->get('operation_commission_amount', '', 'STRING') .
-            $post->get('is_completed', '', 'STRING') .
-            $post->get('operation_original_amount', '', 'STRING') .
-            $post->get('operation_original_currency', '', 'STRING') .
-            $post->get('operation_datetime', '', 'STRING') .
-            $post->get('operation_related_number', '', 'STRING') .
-            $post->get('control', '', 'STRING') .
-            $post->get('description', '', 'STRING') .
-            $post->get('email', '', 'STRING') .
-            $post->get('p_info', '', 'STRING') .
-            $post->get('p_email', '', 'STRING') .
-            $post->get('credit_card_issuer_identification_number', '', 'STRING') .
-            $post->get('credit_card_masked_number', '', 'STRING') .
-            $post->get('credit_card_expiration_year', '', 'STRING') .
-            $post->get('credit_card_expiration_month', '', 'STRING') .
-            $post->get('credit_card_brand_codename', '', 'STRING') .
-            $post->get('credit_card_brand_code', '', 'STRING') .
-            $post->get('credit_card_unique_identifier', '', 'STRING') .
-            $post->get('credit_card_id', '', 'STRING') .
-            $post->get('channel', '', 'STRING') .
-            $post->get('channel_country', '', 'STRING') .
-            $post->get('geoip_country', '', 'STRING') .
-            $post->get('payer_bank_account_name', '', 'STRING') .
-            $post->get('payer_bank_account', '', 'STRING') .
-            $post->get('payer_transfer_title', '', 'STRING') .
-            $post->get('blik_voucher_pin', '', 'STRING') .
-            $post->get('blik_voucher_amount', '', 'STRING') .
-            $post->get('blik_voucher_amount_used', '', 'STRING') ;
 
-
-        if($post->get('signature') == hash('sha256', $string)){
-            return true;
-        }
-    }
 
     /**
-     * Sprawdza czy ip jest z dotpaya
-     *
-     * @param $paymentMethod
-     * @return bool
+         * Returns if the given ip is on the given whitelist.
+         *
+         * @param string $ip        The ip to check.
+         * @param array  $whitelist The ip whitelist. An array of strings.
+         *
+         * @return bool
      */
-    private function isIpValidated($paymentMethod)
+    public function isAllowedIp($ip, array $whitelist)
     {
-        if($_SERVER['REMOTE_ADDR'] == self::DOTPAY_IP || $this->getClientIp() == self::DOTPAY_IP ){
+        $ip = (string)$ip;
+        if (in_array($ip, $whitelist, true)) {
             return true;
         }
 
         return false;
     }
+
+
 
     /**
      * zapisuje order na podstawie danych z arraya
@@ -1304,34 +1307,60 @@ class plgVmPaymentDotpay extends vmPSPlugin {
     private function getInputsForm($orderData)
     {
         if (null !== $this->getPhoneDP($orderData['phone_2']) ) {
-            $phone = $this->getPhoneDP($orderData['phone_2']);
+            $phone = (string) $this->getPhoneDP($orderData['phone_2']);
         } else {
-            $phone = $this->getPhoneDP($orderData['phone_1']);
+            $phone = (string) $this->getPhoneDP($orderData['phone_1']);
         }
 
         $data = array(
-            'id'            => $orderData['dotpay_id'],
-            'amount'        => $orderData['amount'],
-            'currency'      => $orderData['currency'],
-            'control'       => $orderData['dotpay_control'].'|domain:'.$this->geShoptHost().'|VirtueMart:v'.vmVersion::$RELEASE.'|Dotpay module v:'.self::DOTPAY_MODULE_VERSION,
-            'description'   => $orderData['description'],
-            'lang'          => $orderData['lang'],
+            'id'            => (string) $orderData['dotpay_id'],
+            'amount'        => (string) $orderData['amount'],
+            'currency'      => (string)$orderData['currency'],
+            'control'       => (string) $orderData['dotpay_control'].'|domain:'.$this->geShoptHost().'|VirtueMart:v'.vmVersion::$RELEASE.'|Dotpay module v:'.self::DOTPAY_MODULE_VERSION,
+            'description'   => (string)$orderData['description'],
+            'lang'          => (string) $orderData['lang'],
             'type'          => '0',
-            'url'           => $orderData['url'],
-            'urlc'          => $orderData['urlc'],
-            'firstname'     => $this->getFirstnameDP($orderData['first_name']),
-            'lastname'      => $this->getLastnameDP($orderData['last_name']),
-            'email'         => $orderData['email'],
-            'city'          => $this->getCityDP($orderData['city']),
-            'street'        => $this->getStreetDP($orderData['address_1']),
-            'street_n1'     => $this->getStreet2DP($orderData['address_2']),            
-            'postcode'      => $this->getPostcodeDP($orderData['postcode'],$orderData['lang']),
-            'phone'         => $phone,
-            'country'       => $this->getCountryDP($orderData['country']),
-            'api_version'   => 'dev'
+            'url'           => (string) $orderData['url'],
+            'urlc'          => (string) $orderData['urlc'],
+            'firstname'     => (string) $this->getFirstnameDP($orderData['first_name']),
+            'lastname'      => (string) $this->getLastnameDP($orderData['last_name']),
+            'email'         => (string) $orderData['email'],    
+            'api_version'   => 'next',
+            'ignore_last_payment_channel' => '1'
+
         );
-    
+
+        if( null != trim($phone))
+        {
+            $data["phone"] = (string) $phone;
+        }
+        if( null != trim($this->getCountryDP($orderData['country'])))
+        {
+            $data["country"] = (string)$this->getCountryDP($orderData['country']);
+        }
+        if( null != trim($this->getPostcodeDP($orderData['postcode'],$orderData['lang'])))
+        {
+            $data["postcode"] = (string) $this->getPostcodeDP($orderData['postcode'],$orderData['lang']);
+        }
+
+        if( null != trim($this->getStreet2DP($orderData['address_2'])))
+        {
+            $data["street_n1"] = (string)$this->getStreet2DP($orderData['address_2']);
+        }
+
+        if( null != trim($this->getStreetDP($orderData['address_1'])))
+        {
+            $data["street"] = (string) $this->getStreetDP($orderData['address_1']);
+        }
+
+        if( null != trim($this->getCityDP($orderData['city'])))
+        {
+            $data["city"] = (string) $this->getCityDP($orderData['city']);
+        }
+
+
         return $data;
+
 
     }
 
@@ -1360,6 +1389,14 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         }
         else if($what == 'fake_real') {
             preg_match('/\|fake_real="(\d+)"\|/', $params, $get_param1);
+            if (isset($get_param1[1])){
+                return trim($get_param1[1]);
+            }else{
+                return false;
+            }
+        }
+        else if($what == 'dotpay_nonproxy') {
+            preg_match('/\|dotpay_nonproxy="(\d+)"\|/', $params, $get_param1);
             if (isset($get_param1[1])){
                 return trim($get_param1[1]);
             }else{
@@ -1405,58 +1442,47 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         return false;
     }
 
-
     /**
      * Generate CHK for seller and payment data
      * @param type $DotpayPin Dotpay seller PIN
      * @param array $orderData parameters of payment
      * @return string
      */
-    protected function generateCHK($orderData) {
+    
+    
+    ## function: counts the checksum from the defined array of all parameters
 
-        $getinputForm = $this->getInputsForm($orderData);
+    public static function generateCHK($ParametersArray, $DotpayPin)
+    {
 
-     $DotpayPin = $this->getDPConf('dotpay_pin');
+        if(isset($ParametersArray['chk']))
+        {
+            unset($ParametersArray['chk']);
+        }
 
-        $ChkParametersChain =
-                            $DotpayPin.
-                            (isset($getinputForm['api_version']) ? $getinputForm['api_version'] : null).
-                            (isset($getinputForm['lang']) ? $getinputForm['lang'] : null).
-                            (isset($getinputForm['id']) ? $getinputForm['id'] : null).
-                            (isset($getinputForm['amount']) ? $getinputForm['amount'] : null).
-                            (isset($getinputForm['currency']) ? $getinputForm['currency'] : null).
-                            (isset($getinputForm['description']) ? $getinputForm['description'] : null).
-                            (isset($getinputForm['control']) ? $getinputForm['control'] : null).
-                            (isset($getinputForm['channel']) ? $getinputForm['channel'] : null).
-                            (isset($getinputForm['ch_lock']) ? $getinputForm['ch_lock'] : null).
-                            (isset($getinputForm['channel_groups']) ? $getinputForm['channel_groups'] : null).
-                            (isset($getinputForm['url']) ? $getinputForm['url'] : null).
-                            (isset($getinputForm['type']) ? $getinputForm['type'] : null).
-                            (isset($getinputForm['buttontext']) ? $getinputForm['buttontext'] : null).
-                            (isset($getinputForm['urlc']) ? $getinputForm['urlc'] : null).
-                            (isset($getinputForm['firstname']) ? $getinputForm['firstname'] : null).
-                            (isset($getinputForm['lastname']) ? $getinputForm['lastname'] : null).
-                            (isset($getinputForm['email']) ? $getinputForm['email'] : null).
-                            (isset($getinputForm['street']) ? $getinputForm['street'] : null).
-                            (isset($getinputForm['street_n1']) ? $getinputForm['street_n1'] : null).
-                            (isset($getinputForm['street_n2']) ? $getinputForm['street_n2'] : null).
-                            (isset($getinputForm['state']) ? $getinputForm['state'] : null).
-                            (isset($getinputForm['addr3']) ? $getinputForm['addr3'] : null).
-                            (isset($getinputForm['city']) ? $getinputForm['city'] : null).
-                            (isset($getinputForm['postcode']) ? $getinputForm['postcode'] : null).
-                            (isset($getinputForm['phone']) ? $getinputForm['phone'] : null).
-                            (isset($getinputForm['country']) ? $getinputForm['country'] : null).
-                            (isset($getinputForm['p_info']) ? $getinputForm['p_info'] : null).
-                            (isset($getinputForm['p_email']) ? $getinputForm['p_email'] : null).
-                            (isset($getinputForm['bylaw']) ? $getinputForm['bylaw'] : null).
-                            (isset($getinputForm['personal_data']) ? $getinputForm['personal_data'] : null).
-                            (isset($getinputForm['blik_code']) ? $getinputForm['blik_code'] : null).
-                            (isset($getinputForm['ignore_last_payment_channel']) ? $getinputForm['ignore_last_payment_channel'] : null);
+            //sorting the parameter list
+            ksort($ParametersArray);
+            
+            // Display the semicolon separated list
+            $paramList = implode(';', array_keys($ParametersArray));
+            
+            //adding the parameter 'paramList' with sorted list of parameters to the array
+            $ParametersArray['paramsList'] = $paramList;
+            
+            //re-sorting the parameter list
+            ksort($ParametersArray);
+            
+            //json encoding  
+            $json = json_encode($ParametersArray, JSON_UNESCAPED_SLASHES);
 
-
-        return hash('sha256',$ChkParametersChain);
-        
+ 
+        return hash_hmac('sha256', $json, $DotpayPin, false);
+   
+       
     }
+
+
+
 
     /**
      * Na podstawie przygotowanego arraya beda renderowane inputy do formularza
@@ -1467,36 +1493,16 @@ class plgVmPaymentDotpay extends vmPSPlugin {
  
     private function getHtmlInputs($orderData)
     {
-        $getinputForm = $this->getInputsForm($orderData);
-        $chk = $this->generateCHK($orderData);
+        $data = $this->getInputsForm($orderData);
+        $pin =  trim($this->getDPConf('dotpay_pin'));
 
-        $data = array(
-            'id'            => $orderData['dotpay_id'],
-            'amount'        => $getinputForm['amount'],
-            'currency'      => $getinputForm['currency'],
-            'control'       => $getinputForm['control'],
-            'description'   => $getinputForm['description'],
-            'lang'          => $getinputForm['lang'],
-            'type'          => 0,
-            'url'           => $getinputForm['url'],
-            'urlc'          => $getinputForm['urlc'],
-            'firstname'     => $getinputForm['firstname'],
-            'lastname'      => $getinputForm['lastname'],
-            'email'         => $getinputForm['email'],
-            'city'          => $getinputForm['city'],
-            'street'        => $getinputForm['street'],
-            'street_n1'     => $getinputForm['street_n1'],
-            'postcode'      => $getinputForm['postcode'],
-            'phone'         => $getinputForm['phone'],
-            'country'       => $getinputForm['country'],
-            'api_version'   => 'dev'
-        );
+        $chk =  $this->generateCHK($data, $pin);
 
         $html = '';
         foreach($data as $key => $value){
             $html .= '<input type="hidden" name="'.$key.'" value="'.$value.'" />';
         }
-        if(null !== $this->getDPConf('dotpay_pin')){
+        if(null !== $pin){
             $html .= '<input type="hidden" name="chk" value="'.$chk.'" />';
         }
 
@@ -1515,15 +1521,24 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         $src = JURI::root().'plugins/vmpayment/dotpay/'.'dp_logo_alpha_110_47.png';
 
         
-        $html = "<br /><b>".vmText::_('PLG_DOTPAY_REDIRECT_IMG_CLICK')."</b> <br /><br /> ".vmText::_('PLG_DOTPAY_REDIRECT_IMG_WAIT')."<br /><br />";
+        $html = "<br /><b>".vmText::_('PLG_DOTPAY_REDIRECT_IMG_CLICK')."</b> <br />";
+        if((int)$this->getDPConf('autoredirect') != 1) {
+            $html .= "<br /><br /> ".vmText::_('PLG_DOTPAY_REDIRECT_IMG_CLICK_DESCR')."<br /><br />";
+        }else{
+            $html .= "<br /><br /> ".vmText::_('PLG_DOTPAY_REDIRECT_IMG_WAIT')."<br /><br />";
+        }
+
         $html .='<input type="submit" value="" style="border: 0; background: url(\''.$src.'\') no-repeat; width: 200px; height: 100px;padding-top:10px" /> <br /><br /><br />';
         $html .='</form>';
         $html .='</div>';
 
+        if((int)$this->getDPConf('autoredirect') == 1) {
+            $html .= "<br /><br /> ".vmText::_('PLG_DOTPAY_REDIRECT_IMG_WAIT')."<br /><br />";
+            $html .= '<script type="text/javascript">';
+            $html .=    'setTimeout(function(){document.getElementsByClassName("platnosc_dotpay")[0].submit();}, 10);';
+            $html .= '</script>';
+        }
 
-        $html .= '<script type="text/javascript">';
-        $html .=    'setTimeout(function(){document.getElementsByClassName("platnosc_dotpay")[0].submit();}, 10);';
-        $html .= '</script>';
         return $html;
     }
 
