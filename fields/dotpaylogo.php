@@ -23,7 +23,7 @@ class JFormFieldDotpayLogo extends JFormField {
         $src = JURI::root() . "plugins/vmpayment/dotpay/"."dp_logo_alpha_175_50.png";
 		$register_link_dotpay = '';
 
-        return "<a href='http://www.dotpay.pl' target='_blank'><img src=$src /></a><div style='text-align:center;'><a href='https://github.com/dotpay/VirtueMart/releases/latest' target='_new' title='check latest version...' >version: 1.1.0 &#10162;</a></div> $register_link_dotpay 
+        return "<a href='http://www.dotpay.pl' target='_blank'><img src=$src /></a><div style='text-align:center;'><a href='https://github.com/dotpay/VirtueMart/releases/latest' target='_new' title='check latest version...' >version: 1.2.0 &#10162;</a></div> $register_link_dotpay 
 		<script type='text/javascript'>jQuery(document).ready(function() {jQuery('#params_dotpay_urlc_info-lbl').parents().css({'width': 'auto', 'max-width': '1000px','padding': '5px'}); jQuery('input#params_dotpay_id').attr('pattern', '[0-9]{6}');jQuery('input#params_dotpay_id').attr('maxlength', '6'); 
 		jQuery('input#params_dotpay_id').bind('keyup paste keydown', function(e) {
 			if (/\D/g.test(this.value)) {

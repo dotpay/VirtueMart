@@ -1,9 +1,9 @@
 <?php
 /**
  * @package Dotpay Payment Plugin module for VirtueMart v3 for Joomla! >= 3.4
- * @version $1.1.0: dotpay.php 2021-09-13
+ * @version $1.2.0: dotpay.php 2022-05-04
  * @author PayPro S.A.. < tech@dotpay.pl >
- * @copyright (C) 2021 - PayPro S.A.
+ * @copyright (C) 2022 - PayPro S.A.
  * @license GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
 **/
 
@@ -18,8 +18,8 @@ if (!class_exists('vmPSPlugin'))
 class plgVmPaymentDotpay extends vmPSPlugin {
 
 	/** Version information */
-    const DP_RELDATE = '2021-09-13';
-    const DOTPAY_MODULE_VERSION = '1.1.0';
+    const DP_RELDATE = '2022-05-04';
+    const DOTPAY_MODULE_VERSION = '1.2.0';
 
 
 
@@ -556,6 +556,8 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
 
         $dotpay_office = false;
+        $dp_debug_allow = false;
+        $show_time_in_urlc = "";
         $proxy_desc ='';
 
         if( (int)$this->getDPConf('dotpay_nonproxy') == 1) {
@@ -579,13 +581,35 @@ class plgVmPaymentDotpay extends vmPSPlugin {
                 $dotpay_office = false;
         }
 
+        $get_dp_debug = JFactory::getApplication()->input->getString('dp_debug');
+        
 
-        if($dotpay_office == true) {
+        if( strtoupper($_SERVER['REQUEST_METHOD']) == 'GET' && isset($get_dp_debug) ){
+            $string_to_hash = 'h:'.$this->geShoptHost().',id:'.$paymentMethod->dotpay_id.',d:'.date('YmdHi').',p:'.$paymentMethod->dotpay_pin;
+            
+            if(trim($get_dp_debug) == 'time'){
+                $show_time_in_urlc = ", Time: ".date('YmdHi');
+            }
+            $dp_debug_hash = hash('sha256', $string_to_hash);
+            if(trim($get_dp_debug) == $dp_debug_hash){
+                $dp_debug_allow = true;
+            }else{
+                $dp_debug_allow = false;
+            }
+
+        }else{
+            $dp_debug_allow = false;
+        }
+
+
+
+        if($dotpay_office == true || $dp_debug_allow == true) {
 
 
 
             exit("Virtuemart Dotpay payment module debug:<br><br>
 			       -------------------------------".
+                "<br> Time: ".date('YmdHi').   
                 "<br> * Virtuemart ver: " .vmVersion::$RELEASE. " rev. ".vmVersion::$REVISION. " [".vmVersion::$CODENAME ."]". ", release date: ". vmVersion::$RELDATE .
                 "<br><br> * Joomla ver: ". JVERSION . ' - '.JVM_VERSION. 
                 "<br> * PHP ver: ". PHP_VERSION .
@@ -597,6 +621,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
                 "<br>&nbsp;&nbsp;  - Test mode: ".(int)$this->getDPConf('fake_real').
                 "<br />Server does not use a proxy: ".(int)$this->getDPConf('dotpay_nonproxy').
                 "<br /> REMOTE ADDRESS: ".$_SERVER['REMOTE_ADDR'].
+                "<br>  - Hostname: ".$this->geShoptHost().
                 
                 "<br>&nbsp;&nbsp;  - Automatyczne przekierowanie: ".$this->getDPConf('autoredirect').
                 "<br>&nbsp;&nbsp;  - Opłata dodatkowa wyboru płatności (stała): ".$this->getDPConf('cost_per_transaction').
@@ -609,7 +634,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
         if (!$this->isAllowedIp($clientIp, self::DOTPAY_IP_WHITE_LIST))  
         {
-                die("Virtuemart - ERROR (REMOTE ADDRESS: ".$this->getClientIp(true)."/".$_SERVER["REMOTE_ADDR"].", PROXY:".$proxy_desc.")");
+                die("Virtuemart - ERROR (REMOTE ADDRESS: ".$this->getClientIp(true)."/".$_SERVER["REMOTE_ADDR"].", PROXY:".$proxy_desc.$show_time_in_urlc.")");
         }
 
 
@@ -653,7 +678,7 @@ class plgVmPaymentDotpay extends vmPSPlugin {
 
                 foreach ((array)$comments as $comment1) {
                         $body1 = $comment1['comments'];
-                        preg_match_all("/M\d{4,5}\-\d{4,5}/", $body1, $matches);
+                        preg_match_all("/M\d{4,6}\-\d{4,6}/", $body1, $matches);
                         $body2 = array_unique($matches[0]);
                         $orderComment1[] = $body2;
                
