@@ -1,7 +1,7 @@
 <?php
 /**
  * @package Dotpay Payment Plugin module for VirtueMart v3 for Joomla! >= 3.4
- * @version $1.2.0: dotpay.php 2022-05-04
+ * @version $1.2.1: dotpay.php 2022-05-09
  * @author PayPro S.A.. < tech@dotpay.pl >
  * @copyright (C) 2022 - PayPro S.A.
  * @license GNU/GPLv3 http://www.gnu.org/licenses/gpl-3.0.html
@@ -18,8 +18,8 @@ if (!class_exists('vmPSPlugin'))
 class plgVmPaymentDotpay extends vmPSPlugin {
 
 	/** Version information */
-    const DP_RELDATE = '2022-05-04';
-    const DOTPAY_MODULE_VERSION = '1.2.0';
+    const DP_RELDATE = '2022-05-09';
+    const DOTPAY_MODULE_VERSION = '1.2.1';
 
 
 
@@ -823,8 +823,13 @@ class plgVmPaymentDotpay extends vmPSPlugin {
         } else {
             $cost_percent_total = (string)$method->cost_percent_total;
         }
-        return ((string)$method->cost_per_transaction + ($cart_prices['salesPrice'] * $cost_percent_total *
-            0.01));
+        
+        $cost = (int)$method->cost_per_transaction + (((int)$cart_prices['salesPrice']) * ((int)$cost_percent_total) *(0.01));
+        
+        if(!is_numeric($cost)) {
+                $cost = floatval($cost);
+            } 
+        return ($cost);
     }
 
     /**
